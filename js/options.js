@@ -1,113 +1,84 @@
-// Saves options to chrome.storage.sync.
-function save_options()
-{
-    var workstation = document.getElementById( 'workstation' ).value;
-    //var scanner = document.getElementById( 'scanner' ).value;
-    var mngtOverride = document.getElementById( 'mngtoverride' ).checked;
-    //var websocketServer = document.getElementById('websocketserver').value;
+// js/options.js
 
-    //This password is used to allow Help Desk to allow badge printing even if the status is Red
-    var pass1 = "Connie4Life";    //TODO Encode or encrypt this somehow
-    if( mngtOverride )
-    {
+// Extension options page script.
+// Saves management override state to chrome.storage.local.
+// Password verification uses SHA-256 hash comparison — the real password
+// is never stored in code or in chrome.storage.
+//
+// CONFIG and STORAGE_KEY are globals injected via extension_options_page.html
+// script tags before this file loads.
 
-        var password = document.getElementById( 'mngt3' ).value;
-        console.log( "PW: " + password );
-
-        if( password == pass1 )
-        {
-            chrome.storage.local.set( {
-                                         workstationId: workstation,
-                                        // scanner: scanner,
-                                        //  websocketServer: websocketServer,
-                                         managementOverride: mngtOverride
-                                     }, function ()
-                                     {
-                                         // Update status to let user know options were saved.
-                                         var status = document.getElementById( 'status' );
-                                         status.textContent = 'Options saved.';
-                                         setTimeout( function ()
-                                                     {
-                                                         status.textContent = '';
-                                                     }, 750 );
-                                     } );
-
-        }
-        else
-        {
-            var status = document.getElementById( 'status' );
-            status.textContent = 'Options not saved.';
-            setTimeout( function ()
-                        {
-                            status.textContent = '';
-                        }, 750 );
-
-        }
-
-    }
-    else
-    {
-        chrome.storage.local.set( {
-                                                 workstationId: workstation,
-                                               //  scanner: scanner,
-                                               //   websocketServer: websocketServer,
-                                                 managementOverride: mngtOverride
-                                             }, function ()
-                                             {
-                                                 // Update status to let user know options were saved.
-                                                 var status = document.getElementById( 'status' );
-                                                 status.textContent = 'Options saved.';
-                                                 setTimeout( function ()
-                                                             {
-                                                                 status.textContent = '';
-                                                             }, 750 );
-                                             } );
-
-    }
+/**
+ * Hashes a plaintext password using SHA-256 via the browser's built-in
+ * Web Crypto API. No external libraries required.
+ * @param {string} password
+ * @returns {Promise<string>} Hex-encoded SHA-256 hash
+ */
+async function hashPassword(password) {
+  const data       = new TextEncoder().encode(password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
-// Restores using the preferences
-// stored in chrome.storage.
-function restore_options()
-{
-    // Use default value
-    chrome.storage.local.get( {
-                                 workstationId: 'Set Me',
-                              //   scanner: 'none',
-                              //    websocketServer: '',
-                                 managementOverride: false
-                             }, function ( items )
-                             {
-                                 document.getElementById( 'workstation' ).value = items.workstationId;
-                               //  document.getElementById( 'scanner' ).value = items.scanner;
-                               //  document.getElementById( 'websocketserver' ).value = items.websocketServer;
-                                 document.getElementById( 'mngtoverride' ).checked = items.managementOverride;
-                                 dynInput();
-                             } );
-}
-document.addEventListener( 'DOMContentLoaded', restore_options );
-document.getElementById( 'save' ).addEventListener( 'click',
-                                                    save_options );
+/**
+ * Reads form values, validates the management password if override is
+ * being enabled, saves settings to chrome.storage.local, and closes
+ * the window on success.
+ */
+async function saveOptions() {
+  const mngtOverride = document.getElementById("mngtoverride").checked;
+  const statusEl     = document.getElementById("status");
 
-document.getElementById( 'mngtoverride' ).addEventListener( 'click',
-                                                            dynInput );
+  if (mngtOverride) {
+    const entered     = document.getElementById("mngt-password").value;
+    const enteredHash = await hashPassword(entered);
+    if (enteredHash !== CONFIG.managementPasswordHash) {
+      statusEl.className   = "error";
+      statusEl.textContent = "Incorrect password — options not saved.";
+      setTimeout(() => { statusEl.textContent = ""; statusEl.className = ""; }, 2000);
+      return;
+    }
+  }
 
-function dynInput()
-{
-    var cbox = document.getElementById( 'mngtoverride' );
-    if( cbox.checked )
-    {
-        var input = document.createElement( "input" );
-        input.type = "password";
-        input.id = "mngt3";
-        var div = document.createElement( "div" );
-        div.id = 'mngt2';
-        div.innerHTML = "Management PW " + cbox.name;
-        div.appendChild( input );
-        document.getElementById( "insertinputs" ).appendChild( div );
-    }
-    else
-    {
-        document.getElementById( 'mngt2' ).remove();
-    }
+  await chrome.storage.local.set({
+    [STORAGE_KEY.MANAGEMENT_OVERRIDE]: mngtOverride,
+  });
+
+  statusEl.className   = "";
+  statusEl.textContent = "Options saved.";
+
+  // Close the options window after a brief confirmation pause.
+  // window.close() works when opened as a popup; if opened as a
+  // full tab it will be blocked by the browser and the status
+  // message will remain visible instead.
+  setTimeout(() => window.close(), 1000);
 }
+
+/**
+ * Restores saved settings into the options form on page load.
+ */
+function restoreOptions() {
+  chrome.storage.local.get(
+    { [STORAGE_KEY.MANAGEMENT_OVERRIDE]: false },
+    (items) => {
+      document.getElementById("mngtoverride").checked = items[STORAGE_KEY.MANAGEMENT_OVERRIDE];
+      togglePasswordField();
+    }
+  );
+}
+
+/**
+ * Shows or hides the password input based on the override checkbox state.
+ */
+function togglePasswordField() {
+  document.getElementById("password-row").style.display =
+    document.getElementById("mngtoverride").checked ? "block" : "none";
+}
+
+document.addEventListener("DOMContentLoaded", restoreOptions);
+document.getElementById("save").addEventListener("click", saveOptions);
+document.getElementById("mngtoverride").addEventListener("change", togglePasswordField);
+
+// end js/options.js

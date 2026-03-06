@@ -1,491 +1,372 @@
-/**
- *
- * @param {HTMLInputElement[]} checkBoxElements an array of checkbox elements that may or may not be checked.
- * @returns {boolean} true if any of the checkboxes are checked, false otherwise.
- */
-function checkForHolds(checkBoxElements) {
-  for (let i = 0; i < checkBoxElements.length; i++) {
-    if (checkBoxElements[i].checked) {
-      return true;
-    }
+// js/attendeeContact.js
+
+// Content script for the Neon AttendeeEdit page.
+// Handles the actual form writing and submission at check-in (Steps 16-17),
+// and provides the highlight function for missing ICE fields.
+//
+// IMPORTANT: This page does not have enough information to re-derive all
+// blocking conditions (holds, wrong year, not paid, etc.). Those were
+// determined on the EventRegDetails page and stored in STORAGE_KEY.ATTENDEE
+// by popup.js navigateToAttendeeEdit() before navigating here.
+//
+// getAttendeeInfo() therefore:
+//   1. Reads the stored attendee data (which has the full reasons array)
+//   2. Re-scrapes only the fields visible on THIS page (activeBadges, iceContact)
+//   3. Rebuilds the conditions map by keeping all non-attendee-page reasons
+//      from storage and updating the attendee-page-only reasons fresh from DOM
+//   4. Returns the merged result
+//
+// This means Re-check always shows an accurate up-to-date picture without
+// losing reasons that can only be seen on the registrations page.
+//
+// CONFIG, STATE, ACTION, STORAGE_KEY, CONDITION are injected as globals
+// by the manifest. Do not add import statements.
+//
+// Injected by manifest on: /np/admin/event/attendeeEdit.do
+
+// ── TRIGGER ICON UPDATE ON PAGE LOAD ──────────────────────────────────
+
+(async function triggerIconUpdate() {
+  const data = await getAttendeeInfo();
+  await chrome.storage.local.set({ [STORAGE_KEY.ATTENDEE]: data });
+  await chrome.storage.local.set({ [STORAGE_KEY.PENDING_ICON_UPDATE]: { page: "attendee", ts: Date.now() } });
+  console.log("attendeeContact.js: wrote attendee data and triggered icon update");
+})();
+
+// ── MESSAGE LISTENER ───────────────────────────────────────────────────
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === ACTION.GET_ATTENDEE_DATA) {
+    getAttendeeInfo().then(sendResponse);
+    return true; // async response
   }
-  return false;
-}
-
-/**
- * This function takes a day name and returns the corresponding number value repsenting the day of the week.
- * @param {string} dayName the name of the day (e.g., 'Thursday', 'Friday', etc.)
- * @returns {number} the number value of the day of the week (0-6) or -1 if the day name is invalid.
- */
-function getDayValueForDayName(dayName) {
-  switch (dayName) {
-    case "Thursday":
-      return 4;
-    case "Friday":
-      return 5;
-    case "Saturday":
-      return 6;
-    case "Sunday":
-      return 0;
-    default:
-      return -1;
+  if (request.action === ACTION.INCREMENT_BADGE_COUNT) sendResponse(incrementBadge());
+  if (request.action === ACTION.HIGHLIGHT_ICE_FIELD) {
+    highlightICEField();
+    sendResponse({ ok: true });
   }
-}
-
-/**
- *
- * @returns {string} the date that is 18 years before today in MM/DD/YYYY format
- */
-function calculateAdultAfterDate() {
-  const todayDate = new Date();
-  const adultYearsAgo = todayDate.getFullYear() - 18;
-  const adultDate = new Date(
-    adultYearsAgo,
-    todayDate.getMonth(),
-    todayDate.getDate()
-  );
-
-  return adultDate.toLocaleDateString();
-}
-
-/**
- *
- * @param {string} ticketType the name of a ticket, which will include whether it is for an adult, teen, youth, or child.
- * @returns {{ ticketName: string, badgeImage: string, badgeNumberPrefix: string }} an object with ticket information for a given ticket type
- */
-function extractTicketDetailsForType(ticketType) {
-  if (ticketType.includes("Adult")) {
-    return {
-      ticketName: "Adult",
-      badgeImage: "ADULT.tif",
-      badgeNumberPrefix: "A",
-    };
-  } else if (ticketType.includes("Teen")) {
-    return {
-      ticketName: "Teen",
-      badgeImage: "TEEN.tif",
-      badgeNumberPrefix: "T",
-    };
-  } else if (ticketType.includes("Youth")) {
-    return {
-      ticketName: "Youth",
-      badgeImage: "CHILD.tif",
-      badgeNumberPrefix: "C",
-    };
-  } else if (ticketType.includes("Child")) {
-    return {
-      ticketName: "Child",
-      badgeImage: "KID.tif",
-      badgeNumberPrefix: "K",
-    };
-  }
-
-  // Default case
-  return {
-    ticketName: "Unknown",
-    badgeImage: "NONE.tif",
-    badgeNumberPrefix: "U",
-  };
-}
-
-/**
- *
- * @param {string} ticketType the name of the ticket type, which will include whether it is for an adult, teen, youth, or child.
- * @param {string} ticketName the current ticket name, such as "Adult", "Teen", "Youth", or "Child"
- * @returns {string} the ticket name to use for this ticket.
- */
-function extractTicketTextForTicketType(ticketType) {
-  const isDayPass = ticketType.includes("Day Pass");
-
-  // Day pass is for a specific day
-  if (isDayPass) {
-    return 'Day Pass';
-  }
-
-  return 'Weekend';
-}
-
-/**
- *
- * @param {string} ticketType the name of the ticket type, which will include whether it is for an adult, teen, youth, or child.
- * @param {string} adultDobDate the date of birth threshold for adults
- * @returns {{ status: string; reason: string; }} the ticket name to use for this ticket.
- */
-function extractTicketStatus(ticketType, adultDobDate) {
-  const isDayPass = ticketType.includes("Day Pass");
-  const isComplimentaryDayPass = ticketType.includes("Comp");
-
-  const isAdultTicket = ticketType.includes("Adult");
-
-  if (isDayPass) {
-    const dayPassReason = isAdultTicket
-      ? `AGE VERIFICATION: MUST BE 18 OR OLDER (DOB BEFORE ${adultDobDate})`
-      : "OK to proceed";
-    if (isComplimentaryDayPass) {
-      return {
-        status: isAdultTicket ? "yellow" : "green",
-        reason: dayPassReason,
-      };
-    } else {
-      const todayDay = new Date();
-      const dayName = ticketType.match(/Thursday|Friday|Saturday|Sunday/)[0];
-      const isDayPassDayCorrect =
-        todayDay.getDay() === getDayValueForDayName(dayName);
-      const status = isAdultTicket ? "yellow" : "green";
-      return {
-        status: isDayPassDayCorrect ? status : "red",
-        reason: isDayPassDayCorrect
-          ? dayPassReason
-          : "INCORRECT DAY\nDay Pass purchased for a different day than today. Please send attendee to Help Desk.",
-      };
-    }
-  } else if (isAdultTicket) {
-    return {
-      status: "yellow",
-      reason: `AGE VERIFICATION: MUST BE 18 OR OLDER (DOB BEFORE ${adultDobDate})`,
-    };
-  }
-
-  if (
-    ticketType.includes("Teen") ||
-    ticketType.includes("Youth") ||
-    ticketType.includes("Child")
-  ) {
-    return {
-      status: "green",
-      reason: "OK to proceed",
-    };
-  }
-
-  return {
-    status: "red",
-    reason: "UNKNOWN \nPLEASE REVIEW AND SEE A SUB OR CO HEAD FOR ASSISTANCE!",
-  };
-}
-
-/**
- * Created by Matt Resong on 1/10/14.
- */
-
-// The background page is asking us to find the attendee information on this page.
-// So we will call a function to do just that and are then done.
-// TODO Handle more messages, such as a getAttendee and a pickedUp that updates the page as needed.
-
-chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
-  console.log(
-    sender.tab
-      ? "Called from a content script:" + sender.tab.url
-      : "Called from the extension with action: " + request.action
-  );
-  if (request.action == "Get Attendee Data") sendResponse(getAttendeeInfo());
-  if (request.action == "Increment Badge Count") sendResponse(incrementBadge());
 });
 
+// ── FIELD ACCESS HELPERS ───────────────────────────────────────────────
 
-/**
- * 
- * @returns {attendee}
- */
-function getAttendeeInfo() {
-  console.log(
-    "getAttendeeInfo Received a request to load up the attendee data"
-  );
-
-  const attendeeId = $("label:contains('Attendee ID')")
-    .siblings()
-    .text()
-    .trim();
-
-  // New version of badge number with account ID
-  const accountId = new URL(window.location.toString()).searchParams.get(
-    "acct"
-  );
-
-  let attendeeName = "".concat(
-    document.getElementsByName("attendee.firstName")[0].value,
-    " ",
-    document.getElementsByName("attendee.lastName")[0].value
-  );
-  let attendeeBadgeName = $("label:contains('Badge Name'):first")
-    .next()
-    .find("input")
-    .val();
-
-  if (attendeeBadgeName == "" || attendeeBadgeName == null) {
-    attendeeBadgeName = attendeeName;
-  }
-
-  const numActBadgesFromElement = $(
-    "label:contains('Number of Active Badges'):first"
-  )
-    .next()
-    .find("input")
-    .val();
-  const numberActiveBadges =
-    numActBadgesFromElement === "" ? 0 : parseInt(numActBadgesFromElement);
-  const ticketType =
-    document.getElementById("ticketPackageId").options[
-      document.getElementById("ticketPackageId").selectedIndex
-    ].text;
-  const arrChecks = $("label:contains('Art Show Hold - Do Not Release'):first")
-    .next()
-    .find("input");
-  const opsHoldCheck = $(
-    "label:contains('Operations Hold - Do Not Release'):first"
-  )
-    .next()
-    .find("input");
-  const regHoldCheck = $(
-    "label:contains('Registration Hold - Do Not Release'):first"
-  )
-    .next()
-    .find("input");
-  const nonTransferName = $(
-    "label:contains('Non-Transferable First and Last Name'):first"
-  )
-    .next()
-    .find("input")
-    .val();
-
-  const regStatus = $("label:contains('Registration Status')")
-    .siblings()
-    .text()
-    .trim();
-  console.log(regStatus);
-
-  const artShowHold = checkForHolds(arrChecks);
-  const opsHold = checkForHolds(opsHoldCheck);
-  const regHold = checkForHolds(regHoldCheck);
-
-  console.log("Is there an art show hold? " + artShowHold);
-  console.log("Is there an operations department hold? " + opsHold);
-  console.log("Is there a registration department hold? " + regHold);
-  console.log("Ticket: " + ticketType);
-  console.log("Attendee ID: " + attendeeId);
-  console.log("Account ID: " + accountId);
-  console.log(
-    "Name: " + attendeeName + " NonTransfer Name: " + nonTransferName
-  );
-
-  var dataObject = new attendee(
-    accountId,
-    attendeeId,
-    attendeeName,
-    ticketType,
-    numberActiveBadges,
-    attendeeBadgeName,
-    regStatus,
-    artShowHold,
-    opsHold,
-    regHold,
-    nonTransferName
-  );
-
-  return dataObject;
+function customField(index) {
+  return document.querySelector(`[name="attendee.customDataList[${index}].value"]`);
 }
 
-/*
-    Populate data into the non-transferrable badge name and badge pickup fields to note badge picked up.
-    Works for duplicate badges as well (increments and fills in the proper data for the proper badge issuance)
-    Increment the badge number and set the date/time stamp fields and the non-transferrable name field
-    Return true or false (Depending upon success.
-*/
-function incrementBadge() {
-  console.log("incrementBadge Received a request and is processing it now");
+function customFieldValue(index) {
+  return customField(index)?.value?.trim() ?? "";
+}
 
-  var elNumberActiveBadges = $(
-    "label:contains('Number of Active Badges'):first"
-  )
-    .next()
-    .find("input");
-  var numActive =
-    elNumberActiveBadges.val() === ""
-      ? 0
-      : parseInt(elNumberActiveBadges.val());
+function readLabelSiblingText(labelText) {
+  const label = Array.from(document.querySelectorAll("label"))
+    .find(l => l.textContent.trim().startsWith(labelText));
+  const sibling = label?.nextElementSibling;
+  return (sibling?.querySelector("label") ?? sibling)?.textContent?.trim() ?? "";
+}
 
-  var saveButton = document.getElementsByName("save")[0];
+// ── DATE / TIME HELPERS ────────────────────────────────────────────────
 
-  //var elFirstName = $("label:contains('First Name'):first").next().find("input");
-  var elFirstName = $("#acInput");
-  var elLastName = $("label:contains('Last Name'):first").next().find("input");
-  var nonTransferableName = elFirstName.val().concat(" ", elLastName.val());
-  //console.log("FNAME:"+elFirstName.val());
-  //console.log("LNAME:"+elLastName.val());
+function adultCutoffDateString() {
+  const today  = new Date();
+  const cutoff = new Date(today.getFullYear() - CONFIG.adultMinimumAge, today.getMonth(), today.getDate());
+  return cutoff.toLocaleDateString();
+}
 
-  var pickupDates = new Array();
-  var elpickupDates = new Array();
-  for (var i = 1; i < 5; i++) {
-    pickupDates.push(
-      $("label:contains('Pickup Date " + i + "'):first")
-        .next()
-        .find("input")
-        .val()
-    );
-    elpickupDates.push(
-      $("label:contains('Pickup Date " + i + "'):first")
-        .next()
-        .find("input")
-    );
+function formattedDate(date) {
+  return [
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+    date.getFullYear(),
+  ].join("/");
+}
+
+// ── SCRAPE ATTENDEE DATA ───────────────────────────────────────────────
+
+/**
+ * Returns a fully merged attendee state object.
+ *
+ * Reads the stored attendee record (populated from the registrations page)
+ * to recover reasons that cannot be re-derived here (holds, wrong year,
+ * not paid, etc.), then re-evaluates only the conditions that ARE visible
+ * on this page: alreadyIssued, ageVerification, missingIce, noAccountId.
+ *
+ * The result is a fresh reasons array that reflects both the registrations-
+ * page conditions and the current state of the attendee form.
+ *
+ * @returns {Promise<object>}
+ */
+async function getAttendeeInfo() {
+  console.log("getAttendeeInfo: scraping attendee page");
+
+  // ── Read stored data from registrations page ──
+  const stored         = await chrome.storage.local.get(STORAGE_KEY.ATTENDEE);
+  const storedAttendee = stored[STORAGE_KEY.ATTENDEE] ?? {};
+  const storedReasons  = storedAttendee.reasons ?? [];
+
+  // ── Scrape this page ──
+  const accountId      = new URL(window.location.href).searchParams.get("acct");
+  const neonAttendeeId = readLabelSiblingText("Attendee ID");
+  const regStatus      = readLabelSiblingText("Registration Status");
+
+  const firstName     = document.getElementsByName("attendee.firstName")[0]?.value?.trim() ?? "";
+  const lastName      = document.getElementsByName("attendee.lastName")[0]?.value?.trim()  ?? "";
+  const legalName     = `${firstName} ${lastName}`.trim();
+  const preferredName = customFieldValue(CONFIG.fieldIndexes.preferredName);
+
+  const activeBadgesRaw = customFieldValue(CONFIG.fieldIndexes.activeBadgeCount);
+  const activeBadges    = activeBadgesRaw === "" ? 0 : parseInt(activeBadgesRaw, 10);
+
+  const ticketSelect   = document.getElementById("ticketPackageId");
+  const ticketTypeName = ticketSelect?.options[ticketSelect.selectedIndex]?.text ?? "";
+  const ticketConfig   = CONFIG.ticketTypes.find(t => ticketTypeName.includes(t.nameIncludes))
+    ?? { ticketLabel: "Unknown", badgeImage: "NONE.tif", requiresAgeCheck: false };
+  const isDayPass      = ticketTypeName.includes("Day Pass");
+  const adultCutoff    = adultCutoffDateString();
+
+  const iceContact = customFieldValue(CONFIG.fieldIndexes.iceContact);
+
+  // Read hold checkboxes — Neon stores these as customDataList inputs whose
+  // value is "true" when checked. We check both .value and .checked to be safe.
+  function isHoldChecked(index) {
+    // Hold checkboxes use .optionIds (not .value) as their name attribute in Neon.
+    // e.g. attendee.customDataList[0].optionIds — checked when the checkbox is ticked.
+    const el = document.querySelector(`[name="attendee.customDataList[${index}].optionIds"]`);
+    return el?.checked === true;
+  }
+  const regHold = isHoldChecked(CONFIG.fieldIndexes.registrationHold);
+  const artHold = isHoldChecked(CONFIG.fieldIndexes.artShowHold);
+  const opsHold = isHoldChecked(CONFIG.fieldIndexes.operationsHold);
+
+  // ── Build conditions map ──
+  // Start with the ATTENDEE-PAGE-ONLY condition keys we can re-check here.
+  // All other reasons are carried forward from storedReasons unchanged.
+  const attendeePageKeys = new Set([
+    CONDITION.NO_ACCOUNT_ID,
+    CONDITION.NAME_MISMATCH,
+    CONDITION.ALREADY_ISSUED,
+    CONDITION.AGE_VERIFICATION,
+    CONDITION.MISSING_ICE,
+    // Holds are re-evaluated from checkboxes on this page so Re-check can clear them
+    CONDITION.REG_HOLD,
+    CONDITION.ART_HOLD,
+    CONDITION.OPS_HOLD,
+  ]);
+
+  // Fresh evaluation of attendee-page conditions
+  const freshConditions = {};
+
+  if (!accountId) {
+    freshConditions[CONDITION.NO_ACCOUNT_ID] = {
+      text:  "NO ACCOUNT ID\nPlease direct attendee to Help Desk.",
+      isRed: true,
+    };
   }
 
-  var pickupTimes = new Array();
-  var elpickupTimes = new Array();
-  for (var i = 1; i < 5; i++) {
-    pickupTimes.push(
-      $("label:contains('Pickup Time " + i + "'):first")
-        .next()
-        .find("input")
-        .val()
-    );
-    elpickupTimes.push(
-      $("label:contains('Pickup Time " + i + "'):first")
-        .next()
-        .find("input")
-    );
+  // Hold checkboxes — re-evaluated fresh from the DOM so Re-check can clear them
+  if (regHold) {
+    freshConditions[CONDITION.REG_HOLD] = {
+      text:  CONFIG.holdMessages[0].title + "\n" + CONFIG.holdMessages[0].body,
+      isRed: true,
+    };
+  }
+  if (artHold) {
+    freshConditions[CONDITION.ART_HOLD] = {
+      text:  CONFIG.holdMessages[1].title + "\n" + CONFIG.holdMessages[1].body,
+      isRed: true,
+    };
+  }
+  if (opsHold) {
+    freshConditions[CONDITION.OPS_HOLD] = {
+      text:  CONFIG.holdMessages[2].title + "\n" + CONFIG.holdMessages[2].body,
+      isRed: true,
+    };
   }
 
-  var timestamp = new Date();
-  console.log(
-    "The timestamp is set to the following time: " +
-      timestamp.toLocaleTimeString()
-  );
-  //console.log("The timestamp is set to the following date: "+timestamp.toLocaleDateString());
-  var timestampformatteddate =
-    ("0" + (timestamp.getMonth() + 1)).slice(-2) +
-    "/" +
-    ("0" + timestamp.getDate()).slice(-2) +
-    "/" +
-    timestamp.getFullYear();
-  console.log("The timestamp formatted date is: " + timestampformatteddate);
-
-  // Increment the active number of badges
-  if (numActive === 0) {
-    elNumberActiveBadges.val(1);
-  } else {
-    elNumberActiveBadges.val(numActive + 1);
+  // Non-transferable name mismatch: the field already has a name written to it
+  // that doesn't match the current attendee's legal name. This means someone
+  // else previously checked in using this registration.
+  // Hold checkboxes — re-evaluated fresh from the DOM so Re-check can clear them
+  if (regHold) {
+    freshConditions[CONDITION.REG_HOLD] = {
+      text:  CONFIG.holdMessages[0].title + "\n" + CONFIG.holdMessages[0].body,
+      isRed: true,
+    };
+  }
+  if (artHold) {
+    freshConditions[CONDITION.ART_HOLD] = {
+      text:  CONFIG.holdMessages[1].title + "\n" + CONFIG.holdMessages[1].body,
+      isRed: true,
+    };
+  }
+  if (opsHold) {
+    freshConditions[CONDITION.OPS_HOLD] = {
+      text:  CONFIG.holdMessages[2].title + "\n" + CONFIG.holdMessages[2].body,
+      isRed: true,
+    };
   }
 
-  //Set the date/time stamp
-  for (var i = 0; i < pickupTimes.length; i++) {
-    if (pickupTimes[i] == "") {
-      console.log("Time empty, assuming available slot at index: " + i);
-      elpickupTimes[i].val(timestamp.toLocaleTimeString());
-      elpickupDates[i].val(timestampformatteddate);
-      //Its temporarily commented out to allow testing everything else
-      break;
-    } else {
-      console.log(
-        "Moving on... Time NOT empty index: " + i + " value: " + pickupTimes[i]
-      );
+  // Non-transferable name mismatch: this field is blank on a fresh registration
+  // and gets written with the attendee's name when they check in.
+  // If it contains a name that differs from the current attendee, either:
+  //   a) A different person previously checked in on this registration, or
+  //   b) The attendee's name was changed after check-in.
+  // Show this alongside ALREADY_ISSUED if both apply — they are separate facts.
+  const nonTransferableName = customFieldValue(CONFIG.fieldIndexes.nonTransferableName);
+  if (nonTransferableName && nonTransferableName.toLowerCase() !== legalName.toLowerCase()) {
+    freshConditions[CONDITION.NAME_MISMATCH] = {
+      text:  `NAME MISMATCH\nBadge was issued to: ${nonTransferableName}\nCurrent attendee: ${legalName}\nPlease send attendee to Help Desk.`,
+      isRed: true,
+    };
+  }
+
+  if (activeBadges > 0) {
+    freshConditions[CONDITION.ALREADY_ISSUED] = {
+      text:  "ALREADY ISSUED\nThis badge was already issued. Please send attendee to Help Desk.",
+      isRed: true,
+    };
+  }
+
+  // Only show age verification if no badge has been issued yet.
+  // If already issued, that stop reason is sufficient — age verification
+  // is moot because check-in cannot proceed regardless.
+  if (ticketConfig.requiresAgeCheck && activeBadges === 0) {
+    freshConditions[CONDITION.AGE_VERIFICATION] = {
+      text:  `AGE VERIFICATION REQUIRED\nVerify ID matches legal name. Attendee must be ${CONFIG.adultMinimumAge} or older (DOB before ${adultCutoff}).`,
+      isRed: false,
+    };
+  }
+
+  if (!iceContact) {
+    freshConditions[CONDITION.MISSING_ICE] = {
+      text:  "MISSING EMERGENCY CONTACT\nPlease ask the attendee for their emergency contact information.\nFill it in below, then click Re-check.",
+      isRed: false,
+    };
+  }
+
+  // Build a merged conditions map:
+  //   - Keep all stored reasons that are NOT attendee-page-only (holds, wrong year, etc.)
+  //   - Replace attendee-page-only reasons with fresh values from the DOM
+  const mergedConditionsMap = {};
+
+  // Carry forward non-attendee-page reasons from storage
+  for (const r of storedReasons) {
+    if (!attendeePageKeys.has(r.key)) {
+      mergedConditionsMap[r.key] = { text: r.text, isRed: r.isRed };
     }
   }
 
-  //Populate the non-transferrable name field with the name of the person on the registration
-  var nonTransferableNameField = $(
-    "label:contains('Non-Transferable First and Last Name'):first"
-  )
-    .next()
-    .find("input");
-  nonTransferableNameField.val(nonTransferableName);
+  // Overlay fresh attendee-page conditions
+  for (const [key, cond] of Object.entries(freshConditions)) {
+    mergedConditionsMap[key] = cond;
+  }
+
+  // ── Sort by CONFIG.conditionOrder ──
+  const reasons = (CONFIG.conditionOrder ?? [])
+    .filter(entry => mergedConditionsMap[entry.key])
+    .map(entry => ({
+      key:     entry.key,
+      text:    mergedConditionsMap[entry.key].text,
+      isRed:   mergedConditionsMap[entry.key].isRed,
+      fixable: entry.fixableOnAttendeePage,
+    }));
+
+  // Safety net for any conditions not listed in conditionOrder
+  for (const [key, cond] of Object.entries(mergedConditionsMap)) {
+    if (!reasons.find(r => r.key === key)) {
+      reasons.push({ key, text: cond.text, isRed: cond.isRed, fixable: false });
+    }
+  }
+
+  // ── Determine overall state ──
+  const hasRed    = reasons.some(r => r.isRed);
+  const hasYellow = reasons.some(r => !r.isRed);
+  const state     = hasRed ? STATE.RED : hasYellow ? STATE.YELLOW : STATE.GREEN;
+
+  const missingIce = !!freshConditions[CONDITION.MISSING_ICE];
+
+  console.log(`Attendee: ${legalName} | Account: ${accountId} | Badges: ${activeBadges} | ICE: ${iceContact ? "set" : "missing"} | State: ${state} | Conditions: ${reasons.map(r => r.key).join(", ") || "none"}`);
+
+  return {
+    accountId,
+    neonAttendeeId,
+    attendeeId:            accountId,
+    legalName,
+    preferredName,
+    badgeImage:            ticketConfig.badgeImage,
+    ticket:                `${ticketConfig.ticketLabel}${isDayPass ? " Day Pass" : " Weekend"}`,
+    activeBadges,
+    regStatus,
+    state,
+    reasons,
+    missingRequiredFields: missingIce ? ["In Case Of Emergency (Name and Phone)"] : [],
+  };
+}
+
+// ── HIGHLIGHT MISSING ICE FIELD ────────────────────────────────────────
+
+function highlightICEField() {
+  const field = customField(CONFIG.fieldIndexes.iceContact);
+  if (!field) return;
+  field.scrollIntoView({ behavior: "smooth", block: "center" });
+  field.style.outline    = "3px solid #dc3545";
+  field.style.background = "#fff3cd";
+  field.focus();
+  setTimeout(() => {
+    field.style.outline    = "";
+    field.style.background = "";
+  }, 5000);
+}
+
+// ── WRITE FIELDS AND SUBMIT ────────────────────────────────────────────
+
+function incrementBadge() {
+  console.log("incrementBadge: validating fields before writing");
+
+  const activeBadgesEl    = customField(CONFIG.fieldIndexes.activeBadgeCount);
+  const nonTransferableEl = customField(CONFIG.fieldIndexes.nonTransferableName);
+  const saveButton        = document.getElementsByName("save")[0];
+
+  if (!activeBadgesEl) {
+    const msg = "Cannot complete check-in: Active Badge Count field not found. Please contact Registration Head.";
+    console.error(msg);
+    return { ok: false, error: msg };
+  }
+  if (!nonTransferableEl) {
+    const msg = "Cannot complete check-in: Non-Transferable Name field not found. Please contact Registration Head.";
+    console.error(msg);
+    return { ok: false, error: msg };
+  }
+  if (!saveButton) {
+    const msg = "Cannot complete check-in: Save button not found. Please contact Registration Head.";
+    console.error(msg);
+    return { ok: false, error: msg };
+  }
+
+  const availableSlot = CONFIG.fieldIndexes.pickupSlots
+    .find(([, timeIdx]) => customField(timeIdx)?.value?.trim() === "");
+  if (!availableSlot) {
+    const msg = "Cannot complete check-in: All pickup time slots are already filled. Please contact Registration Head.";
+    console.error(msg);
+    return { ok: false, error: msg };
+  }
+
+  console.log("incrementBadge: pre-flight passed, writing fields");
+
+  const currentCount   = activeBadgesEl.value === "" ? 0 : parseInt(activeBadgesEl.value, 10);
+  activeBadgesEl.value = currentCount + 1;
+
+  const firstName         = document.getElementById("acInput")?.value?.trim() ?? "";
+  const lastName          = document.getElementsByName("attendee.lastName")[0]?.value?.trim() ?? "";
+  nonTransferableEl.value = `${firstName} ${lastName}`.trim();
+
+  const now                = new Date();
+  const [dateIdx, timeIdx] = availableSlot;
+  customField(timeIdx).value = now.toLocaleTimeString();
+  customField(dateIdx).value = formattedDate(now);
+  console.log(`Pickup timestamp written to slot date[${dateIdx}] / time[${timeIdx}]`);
 
   saveButton.click();
+  return { ok: true };
 }
 
-//Builds the data object
-function attendee(
-  accountId,
-  attendeeId,
-  name,
-  ticket,
-  activeBadges,
-  badgeName,
-  regStatus,
-  artShowHold,
-  opsHold,
-  regHold,
-  nonTransferName
-) {
-  this.accountId = accountId;
-  this.attendeeId = attendeeId;
-  this.name = name;
-  this.ticket = ticket;
-  this.activeBadges = activeBadges;
-  this.badgeName = badgeName;
-  this.regStatus = regStatus;
-  this.artShowHold = artShowHold;
-  this.opsHold = opsHold;
-  this.regHold = regHold;
-  this.nonTransferName = nonTransferName;
-
-  console.log("Ticket we are processing: " + ticket);
-
-  const { ticketName, badgeImage, badgeNumberPrefix } = extractTicketDetailsForType(ticket);
-  const ticketText = extractTicketTextForTicketType(ticket);
-
-  const adultDob = calculateAdultAfterDate();
-  const { status, reason } = extractTicketStatus(ticket, adultDob);
-
-  this.ticket = `${ticketName} ${ticketText}`;
-  this.badgeImage = badgeImage;
-  this.attendeeId = `${badgeNumberPrefix}${this.attendeeId}`;
-
-  this.state = status;
-  this.reason = reason;
-
-  //Check to make sure the registration is in a "SUCCEEDED" state meaning that it is fully processed and paid
-  if (this.regStatus != "SUCCEEDED") {
-    console.log("This is not paid for yet!");
-    this.state = "red";
-    this.reason =
-      "NOT PAID\nThis badge has not been paid for. Please direct attendee to cashier for assistance!";
-  }
-
-  //Check to see if this badge has already been picked up, replacement badges need to go through Help Desk/Cashier
-  if (this.activeBadges != null && this.activeBadges > 0) {
-    console.log("There are already active badges");
-    this.state = "red";
-    this.reason =
-      "ISSUED\nThis badge was already issued. Please direct attendee to cashier for assistance!";
-  }
-
-  //Check to see if the Art Show has identified this person as needing to see them before picking up their badge
-  if (this.artShowHold) {
-    console.log("There is an art show hold");
-    this.state = "red";
-    this.reason =
-      "HOLD\nSend attendee to Help Desk.\nHelp Desk instructions: This badge has an Art Show hold. Please direct attendee to Art Show to pay and then to the Registration Help Desk.";
-  }
-
-  //Check to see if the Operations has identified this person as needing to see them before picking up their badge
-  if (this.opsHold) {
-    console.log("There is an operations department hold");
-    this.state = "red";
-    this.reason =
-      "HOLD\nSend attendee to Help Desk.\nHelp Desk instructions: This badge has an Operations department hold. Please direct the attendee to Operations.";
-  }
-
-  //Check to see if the Registration has identified this person as needing to see the Help Desk before picking up their badge
-  if (this.regHold) {
-    console.log("There is a registration department hold");
-    this.state = "red";
-    this.reason =
-      "HOLD\nSend attendee to Help Desk.\nHelp Desk instructions: This badge has an Registration department hold. Please review notes on account or contact Head.";
-  }
-
-  //Some tickets (comps for example) are non-transferrable, if the names do not match they need to see the Help Desk
-  if (this.nonTransferName !== "" && this.nonTransferName !== this.name) {
-    this.state = "red";
-    this.reason =
-      "THIS IS A NON-TRANSFERABLE BADGE!\nSEND ATTENDEE TO THE HELP DESK !!";
-  }
-
-  //If the account ID is missing then something did not go correctly in scraping the data or the person clicked the Edit button instead of using the Connie Head
-  if (this.accountId === null) {
-    console.log("No account number!");
-    this.state = "red";
-    this.reason =
-      'NO ACCOUNT NUMBER\nClick "Cancel", then use the Connie head icon on the previous page.';
-  }
-
-  console.log("the reason is: " + this.reason);
-}
+// end js/attendeeContact.js
