@@ -43,7 +43,7 @@ const CONFIG = {
   //
   ticketTypes: [
     { nameIncludes: "Adult", ticketLabel: "Adult", badgeImage: "ADULT.tif", requiresAgeCheck: true  },
-    { nameIncludes: "Teen",  ticketLabel: "Teen",  badgeImage: "TEEN.tif",  requiresAgeCheck: true  },
+    { nameIncludes: "Teen",  ticketLabel: "Teen",  badgeImage: "TEEN.tif",  requiresAgeCheck: false },
     { nameIncludes: "Youth", ticketLabel: "Youth", badgeImage: "CHILD.tif", requiresAgeCheck: false },
     { nameIncludes: "Child", ticketLabel: "Child", badgeImage: "KID.tif",   requiresAgeCheck: false },
   ],
