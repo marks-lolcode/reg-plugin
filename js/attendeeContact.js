@@ -1,5 +1,4 @@
 // js/attendeeContact.js
-
 // Content script for the Neon AttendeeEdit page.
 // Handles the actual form writing and submission at check-in (Steps 16-17),
 // and provides the highlight function for missing ICE fields.
@@ -10,11 +9,11 @@
 // by popup.js navigateToAttendeeEdit() before navigating here.
 //
 // getAttendeeInfo() therefore:
-//   1. Reads the stored attendee data (which has the full reasons array)
-//   2. Re-scrapes only the fields visible on THIS page (activeBadges, iceContact)
-//   3. Rebuilds the conditions map by keeping all non-attendee-page reasons
-//      from storage and updating the attendee-page-only reasons fresh from DOM
-//   4. Returns the merged result
+// 1. Reads the stored attendee data (which has the full reasons array)
+// 2. Re-scrapes only the fields visible on THIS page (activeBadges, iceContact)
+// 3. Rebuilds the conditions map by keeping all non-attendee-page reasons
+//    from storage and updating the attendee-page-only reasons fresh from DOM
+// 4. Returns the merged result
 //
 // This means Re-check always shows an accurate up-to-date picture without
 // losing reasons that can only be seen on the registrations page.
@@ -25,7 +24,6 @@
 // Injected by manifest on: /np/admin/event/attendeeEdit.do
 
 // ── TRIGGER ICON UPDATE ON PAGE LOAD ──────────────────────────────────
-
 (async function triggerIconUpdate() {
   const data = await getAttendeeInfo();
   await chrome.storage.local.set({ [STORAGE_KEY.ATTENDEE]: data });
@@ -34,7 +32,6 @@
 })();
 
 // ── MESSAGE LISTENER ───────────────────────────────────────────────────
-
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === ACTION.GET_ATTENDEE_DATA) {
     getAttendeeInfo().then(sendResponse);
@@ -48,7 +45,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 // ── FIELD ACCESS HELPERS ───────────────────────────────────────────────
-
 function customField(index) {
   return document.querySelector(`[name="attendee.customDataList[${index}].value"]`);
 }
@@ -65,9 +61,8 @@ function readLabelSiblingText(labelText) {
 }
 
 // ── DATE / TIME HELPERS ────────────────────────────────────────────────
-
 function adultCutoffDateString() {
-  const today  = new Date();
+  const today = new Date();
   const cutoff = new Date(today.getFullYear() - CONFIG.adultMinimumAge, today.getMonth(), today.getDate());
   return cutoff.toLocaleDateString();
 }
@@ -81,7 +76,6 @@ function formattedDate(date) {
 }
 
 // ── SCRAPE ATTENDEE DATA ───────────────────────────────────────────────
-
 /**
  * Returns a fully merged attendee state object.
  *
@@ -99,40 +93,36 @@ async function getAttendeeInfo() {
   console.log("getAttendeeInfo: scraping attendee page");
 
   // ── Read stored data from registrations page ──
-  const stored         = await chrome.storage.local.get(STORAGE_KEY.ATTENDEE);
+  const stored = await chrome.storage.local.get(STORAGE_KEY.ATTENDEE);
   const storedAttendee = stored[STORAGE_KEY.ATTENDEE] ?? {};
-  const storedReasons  = storedAttendee.reasons ?? [];
+  const storedReasons = storedAttendee.reasons ?? [];
 
   // ── Scrape this page ──
-  const accountId      = new URL(window.location.href).searchParams.get("acct");
+  const accountId = new URL(window.location.href).searchParams.get("acct");
   const neonAttendeeId = readLabelSiblingText("Attendee ID");
-  const regStatus      = readLabelSiblingText("Registration Status");
-
-  const firstName     = document.getElementsByName("attendee.firstName")[0]?.value?.trim() ?? "";
-  const lastName      = document.getElementsByName("attendee.lastName")[0]?.value?.trim()  ?? "";
-  const legalName     = `${firstName} ${lastName}`.trim();
-  const preferredName = customFieldValue(CONFIG.fieldIndexes.preferredName);
-
-  const activeBadgesRaw = customFieldValue(CONFIG.fieldIndexes.activeBadgeCount);
-  const activeBadges    = activeBadgesRaw === "" ? 0 : parseInt(activeBadgesRaw, 10);
-
-  const ticketSelect   = document.getElementById("ticketPackageId");
-  const ticketTypeName = ticketSelect?.options[ticketSelect.selectedIndex]?.text ?? "";
-  const ticketConfig   = CONFIG.ticketTypes.find(t => ticketTypeName.includes(t.nameIncludes))
-    ?? { ticketLabel: "Unknown", badgeImage: "NONE.tif", requiresAgeCheck: false };
-  const isDayPass      = ticketTypeName.includes("Day Pass");
-  const adultCutoff    = adultCutoffDateString();
-
-  const iceContact = customFieldValue(CONFIG.fieldIndexes.iceContact);
+  const regStatus = readLabelSiblingText("Registration Status");
+  const firstName = document.getElementsByName("attendee.firstName")[0]?.value?.trim() ?? "";
+  const lastName  = document.getElementsByName("attendee.lastName")[0]?.value?.trim() ?? "";
+  const legalName = `${firstName} ${lastName}`.trim();
+  const preferredName    = customFieldValue(CONFIG.fieldIndexes.preferredName);
+  const activeBadgesRaw  = customFieldValue(CONFIG.fieldIndexes.activeBadgeCount);
+  const activeBadges     = activeBadgesRaw === "" ? 0 : parseInt(activeBadgesRaw, 10);
+  const ticketSelect     = document.getElementById("ticketPackageId");
+  const ticketTypeName   = ticketSelect?.options[ticketSelect.selectedIndex]?.text ?? "";
+  const ticketConfig     = CONFIG.ticketTypes.find(t => ticketTypeName.includes(t.nameIncludes))
+                        ?? { ticketLabel: "Unknown", badgeImage: "NONE.tif", requiresAgeCheck: false };
+  const isDayPass        = ticketTypeName.includes("Day Pass");
+  const adultCutoff      = adultCutoffDateString();
+  const iceContact       = customFieldValue(CONFIG.fieldIndexes.iceContact);
 
   // Read hold checkboxes — Neon stores these as customDataList inputs whose
-  // value is "true" when checked. We check both .value and .checked to be safe.
+  // value is "true" when checked. Hold checkboxes use .optionIds as their
+  // name attribute (e.g. attendee.customDataList[0].optionIds).
   function isHoldChecked(index) {
-    // Hold checkboxes use .optionIds (not .value) as their name attribute in Neon.
-    // e.g. attendee.customDataList[0].optionIds — checked when the checkbox is ticked.
     const el = document.querySelector(`[name="attendee.customDataList[${index}].optionIds"]`);
     return el?.checked === true;
   }
+
   const regHold = isHoldChecked(CONFIG.fieldIndexes.registrationHold);
   const artHold = isHoldChecked(CONFIG.fieldIndexes.artShowHold);
   const opsHold = isHoldChecked(CONFIG.fieldIndexes.operationsHold);
@@ -157,7 +147,7 @@ async function getAttendeeInfo() {
 
   if (!accountId) {
     freshConditions[CONDITION.NO_ACCOUNT_ID] = {
-      text:  "NO ACCOUNT ID\nPlease direct attendee to Help Desk.",
+      text: "NO ACCOUNT ID\nPlease direct attendee to Help Desk.",
       isRed: true,
     };
   }
@@ -165,42 +155,19 @@ async function getAttendeeInfo() {
   // Hold checkboxes — re-evaluated fresh from the DOM so Re-check can clear them
   if (regHold) {
     freshConditions[CONDITION.REG_HOLD] = {
-      text:  CONFIG.holdMessages[0].title + "\n" + CONFIG.holdMessages[0].body,
+      text: CONFIG.holdMessages[0].title + "\n" + CONFIG.holdMessages[0].body,
       isRed: true,
     };
   }
   if (artHold) {
     freshConditions[CONDITION.ART_HOLD] = {
-      text:  CONFIG.holdMessages[1].title + "\n" + CONFIG.holdMessages[1].body,
+      text: CONFIG.holdMessages[1].title + "\n" + CONFIG.holdMessages[1].body,
       isRed: true,
     };
   }
   if (opsHold) {
     freshConditions[CONDITION.OPS_HOLD] = {
-      text:  CONFIG.holdMessages[2].title + "\n" + CONFIG.holdMessages[2].body,
-      isRed: true,
-    };
-  }
-
-  // Non-transferable name mismatch: the field already has a name written to it
-  // that doesn't match the current attendee's legal name. This means someone
-  // else previously checked in using this registration.
-  // Hold checkboxes — re-evaluated fresh from the DOM so Re-check can clear them
-  if (regHold) {
-    freshConditions[CONDITION.REG_HOLD] = {
-      text:  CONFIG.holdMessages[0].title + "\n" + CONFIG.holdMessages[0].body,
-      isRed: true,
-    };
-  }
-  if (artHold) {
-    freshConditions[CONDITION.ART_HOLD] = {
-      text:  CONFIG.holdMessages[1].title + "\n" + CONFIG.holdMessages[1].body,
-      isRed: true,
-    };
-  }
-  if (opsHold) {
-    freshConditions[CONDITION.OPS_HOLD] = {
-      text:  CONFIG.holdMessages[2].title + "\n" + CONFIG.holdMessages[2].body,
+      text: CONFIG.holdMessages[2].title + "\n" + CONFIG.holdMessages[2].body,
       isRed: true,
     };
   }
@@ -214,14 +181,14 @@ async function getAttendeeInfo() {
   const nonTransferableName = customFieldValue(CONFIG.fieldIndexes.nonTransferableName);
   if (nonTransferableName && nonTransferableName.toLowerCase() !== legalName.toLowerCase()) {
     freshConditions[CONDITION.NAME_MISMATCH] = {
-      text:  `NAME MISMATCH\nBadge was issued to: ${nonTransferableName}\nCurrent attendee: ${legalName}\nPlease send attendee to Help Desk.`,
+      text: `NAME MISMATCH\nBadge was issued to: ${nonTransferableName}\nCurrent attendee: ${legalName}\nPlease send attendee to Help Desk.`,
       isRed: true,
     };
   }
 
   if (activeBadges > 0) {
     freshConditions[CONDITION.ALREADY_ISSUED] = {
-      text:  "ALREADY ISSUED\nThis badge was already issued. Please send attendee to Help Desk.",
+      text: "ALREADY ISSUED\nThis badge was already issued. Please send attendee to Help Desk.",
       isRed: true,
     };
   }
@@ -231,31 +198,28 @@ async function getAttendeeInfo() {
   // is moot because check-in cannot proceed regardless.
   if (ticketConfig.requiresAgeCheck && activeBadges === 0) {
     freshConditions[CONDITION.AGE_VERIFICATION] = {
-      text:  `AGE VERIFICATION REQUIRED\nVerify ID matches legal name. Attendee must be ${CONFIG.adultMinimumAge} or older (DOB before ${adultCutoff}).`,
+      text: `AGE VERIFICATION REQUIRED\nVerify ID matches legal name. Attendee must be ${CONFIG.adultMinimumAge} or older (DOB before ${adultCutoff}).`,
       isRed: false,
     };
   }
 
   if (!iceContact) {
     freshConditions[CONDITION.MISSING_ICE] = {
-      text:  "MISSING EMERGENCY CONTACT\nPlease ask the attendee for their emergency contact information.\nFill it in below, then click Re-check.",
+      text: "MISSING EMERGENCY CONTACT\nPlease ask the attendee for their emergency contact information.\nFill it in below, then click Re-check.",
       isRed: false,
     };
   }
 
   // Build a merged conditions map:
-  //   - Keep all stored reasons that are NOT attendee-page-only (holds, wrong year, etc.)
-  //   - Replace attendee-page-only reasons with fresh values from the DOM
+  // - Keep all stored reasons that are NOT attendee-page-only (holds, wrong year, etc.)
+  // - Replace attendee-page-only reasons with fresh values from the DOM
   const mergedConditionsMap = {};
 
-  // Carry forward non-attendee-page reasons from storage
   for (const r of storedReasons) {
     if (!attendeePageKeys.has(r.key)) {
       mergedConditionsMap[r.key] = { text: r.text, isRed: r.isRed };
     }
   }
-
-  // Overlay fresh attendee-page conditions
   for (const [key, cond] of Object.entries(freshConditions)) {
     mergedConditionsMap[key] = cond;
   }
@@ -289,11 +253,11 @@ async function getAttendeeInfo() {
   return {
     accountId,
     neonAttendeeId,
-    attendeeId:            accountId,
+    attendeeId: accountId,
     legalName,
     preferredName,
-    badgeImage:            ticketConfig.badgeImage,
-    ticket:                `${ticketConfig.ticketLabel}${isDayPass ? " Day Pass" : " Weekend"}`,
+    badgeImage: ticketConfig.badgeImage,
+    ticket: `${ticketConfig.ticketLabel}${isDayPass ? " Day Pass" : " Weekend"}`,
     activeBadges,
     regStatus,
     state,
@@ -303,12 +267,11 @@ async function getAttendeeInfo() {
 }
 
 // ── HIGHLIGHT MISSING ICE FIELD ────────────────────────────────────────
-
 function highlightICEField() {
   const field = customField(CONFIG.fieldIndexes.iceContact);
   if (!field) return;
   field.scrollIntoView({ behavior: "smooth", block: "center" });
-  field.style.outline    = "3px solid #dc3545";
+  field.style.outline   = "3px solid #dc3545";
   field.style.background = "#fff3cd";
   field.focus();
   setTimeout(() => {
@@ -318,7 +281,6 @@ function highlightICEField() {
 }
 
 // ── WRITE FIELDS AND SUBMIT ────────────────────────────────────────────
-
 function incrementBadge() {
   console.log("incrementBadge: validating fields before writing");
 
@@ -352,14 +314,14 @@ function incrementBadge() {
 
   console.log("incrementBadge: pre-flight passed, writing fields");
 
-  const currentCount   = activeBadgesEl.value === "" ? 0 : parseInt(activeBadgesEl.value, 10);
+  const currentCount = activeBadgesEl.value === "" ? 0 : parseInt(activeBadgesEl.value, 10);
   activeBadgesEl.value = currentCount + 1;
 
-  const firstName         = document.getElementById("acInput")?.value?.trim() ?? "";
-  const lastName          = document.getElementsByName("attendee.lastName")[0]?.value?.trim() ?? "";
+  const firstName = document.getElementById("acInput")?.value?.trim() ?? "";
+  const lastName  = document.getElementsByName("attendee.lastName")[0]?.value?.trim() ?? "";
   nonTransferableEl.value = `${firstName} ${lastName}`.trim();
 
-  const now                = new Date();
+  const now = new Date();
   const [dateIdx, timeIdx] = availableSlot;
   customField(timeIdx).value = now.toLocaleTimeString();
   customField(dateIdx).value = formattedDate(now);
