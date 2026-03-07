@@ -30,6 +30,7 @@ const STORAGE_KEY = {
   AGE_VERIFIED:        "ageVerified",
   // Written by content scripts to reliably wake the background service worker.
   PENDING_ICON_UPDATE: "pendingIconUpdate",
+  NOTE_ACKNOWLEDGED:   "noteAcknowledged",
 };
 
 /**
