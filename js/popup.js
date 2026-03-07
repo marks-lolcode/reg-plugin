@@ -220,39 +220,42 @@ async function buildAttendeeView(attendee, tab) {
 
   body.appendChild(table);
 
-  // ── Re-check buttons for fixable conditions ────────────────────────
+  // ── Re-check section ──────────────────────────────────────────────────
+  // If any conditions are fixable on this page, show a single Re-check button
+  // plus a "Show me the field" button for ICE if that condition is present.
   const fixableReasons = reasons.filter(r => r.fixable);
   if (fixableReasons.length > 0) {
     const recheckSection = el("div", { className: "recheck-section" });
-    fixableReasons.forEach(reason => {
-      const block = el("div", { className: "recheck-block" });
+    const recheckBlock   = el("div", { className: "recheck-block" });
 
-      if (reason.key === CONDITION.MISSING_ICE) {
-        const showBtn = el("button", { className: "btn-show-field" });
-        showBtn.textContent = "Show me the field ↓";
-        showBtn.addEventListener("click", () => {
-          chrome.tabs.sendMessage(tab.id, { action: ACTION.HIGHLIGHT_ICE_FIELD });
-          window.close();
-        });
-        block.appendChild(showBtn);
-      }
-
-      const recheckBtn = el("button", { className: "btn-recheck" });
-      recheckBtn.textContent = `Re-check ↺`;
-      recheckBtn.addEventListener("click", async () => {
-        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (!tabs[0]) return;
-        await chrome.storage.local.set({ [STORAGE_KEY.ATTENDEE]: attendee });
-        chrome.tabs.sendMessage(tabs[0].id, { action: ACTION.GET_ATTENDEE_DATA }, async (freshData) => {
-          if (freshData) {
-            await chrome.storage.local.set({ [STORAGE_KEY.ATTENDEE]: freshData });
-            buildAttendeeView(freshData, tab);
-          }
-        });
+    // "Show me the field" button — only for the ICE condition
+    const hasIce = fixableReasons.some(r => r.key === CONDITION.MISSING_ICE);
+    if (hasIce) {
+      const showBtn = el("button", { className: "btn-show-field" });
+      showBtn.textContent = "Show me the field ↓";
+      showBtn.addEventListener("click", () => {
+        chrome.tabs.sendMessage(tab.id, { action: ACTION.HIGHLIGHT_ICE_FIELD });
+        window.close();
       });
-      block.appendChild(recheckBtn);
-      recheckSection.appendChild(block);
+      recheckBlock.appendChild(showBtn);
+    }
+
+    // Single shared Re-check button for all fixable conditions
+    const recheckBtn = el("button", { className: "btn-recheck" });
+    recheckBtn.textContent = "Re-check ↺";
+    recheckBtn.addEventListener("click", async () => {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tabs[0]) return;
+      await chrome.storage.local.set({ [STORAGE_KEY.ATTENDEE]: attendee });
+      chrome.tabs.sendMessage(tabs[0].id, { action: ACTION.GET_ATTENDEE_DATA }, async (freshData) => {
+        if (freshData) {
+          await chrome.storage.local.set({ [STORAGE_KEY.ATTENDEE]: freshData });
+          buildAttendeeView(freshData, tab);
+        }
+      });
     });
+    recheckBlock.appendChild(recheckBtn);
+    recheckSection.appendChild(recheckBlock);
     body.appendChild(recheckSection);
   }
 
