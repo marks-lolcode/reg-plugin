@@ -7,14 +7,14 @@
 
 document.addEventListener("DOMContentLoaded", displayPopup);
 
-// ── OVERRIDE BANNER ────────────────────────────────────────────────────
+// ── OVERRIDE BANNER ────────────────────────────────────────────────────────
 function buildOverrideBanner() {
   const bar = el("div", { className: "override-bar" });
   bar.textContent = "MANAGER OVERRIDE ACTIVE";
   return bar;
 }
 
-// ── ENTRY POINT ────────────────────────────────────────────────────────
+// ── ENTRY POINT ────────────────────────────────────────────────────────────
 async function displayPopup() {
   const activeTab = await getActiveTab();
   const url = activeTab?.url ?? "";
@@ -32,7 +32,7 @@ async function displayPopup() {
     const result = await chrome.storage.local.get(STORAGE_KEY.REGISTRATIONS);
     const registrations = result[STORAGE_KEY.REGISTRATIONS];
     registrations
-      ? buildRegistrationsView(registrations, activeTab)
+      ? buildRegistrationsViewOrNote(registrations, activeTab)
       : buildNotFoundView(
           "No registration data found.",
           "Navigate to a registration page first, then try again."
@@ -45,7 +45,50 @@ async function displayPopup() {
   }
 }
 
-// ── REGISTRATIONS VIEW ─────────────────────────────────────────────────
+// ── REGISTRATIONS: NOTE GATE ───────────────────────────────────────────────
+// If the registration has a note, show it first and require acknowledgment
+// before proceeding to the normal attendee list.
+async function buildRegistrationsViewOrNote(registrationData, tab) {
+  const note = registrationData.note ?? "";
+  if (!note) {
+    buildRegistrationsView(registrationData, tab);
+    return;
+  }
+
+  const ackResult = await chrome.storage.local.get(STORAGE_KEY.NOTE_ACKNOWLEDGED);
+  const acknowledged = ackResult[STORAGE_KEY.NOTE_ACKNOWLEDGED] ?? false;
+  if (acknowledged) {
+    buildRegistrationsView(registrationData, tab);
+    return;
+  }
+
+  // Show note screen
+  const overrideResult = await chrome.storage.local.get(STORAGE_KEY.MANAGEMENT_OVERRIDE);
+  const managementOverride = overrideResult[STORAGE_KEY.MANAGEMENT_OVERRIDE] ?? false;
+
+  const body = document.body;
+  body.innerHTML = "";
+
+  if (managementOverride) body.appendChild(buildOverrideBanner());
+
+  const screen = el("div", { className: "note-screen" });
+  screen.appendChild(el("div", { className: "note-heading", textContent: "📋 Registration Note" }));
+  const noteText = el("div", { className: "note-text" });
+  noteText.textContent = note;
+  screen.appendChild(noteText);
+
+  const ackBtn = el("button", { className: "btn-note-ack" });
+  ackBtn.textContent = "Note Read ✓";
+  ackBtn.addEventListener("click", async () => {
+    await chrome.storage.local.set({ [STORAGE_KEY.NOTE_ACKNOWLEDGED]: true });
+    buildRegistrationsView(registrationData, tab);
+  });
+  screen.appendChild(ackBtn);
+
+  body.appendChild(screen);
+}
+
+// ── REGISTRATIONS VIEW ─────────────────────────────────────────────────────
 async function buildRegistrationsView(registrationData, tab) {
   const body = document.body;
   body.innerHTML = "";
@@ -86,7 +129,7 @@ async function buildRegistrationsView(registrationData, tab) {
 }
 
 async function navigateToAttendeeEdit(reg, tab) {
-  await chrome.storage.local.remove([STORAGE_KEY.AGE_VERIFIED]);
+  await chrome.storage.local.remove([STORAGE_KEY.AGE_VERIFIED, STORAGE_KEY.NOTE_ACKNOWLEDGED]);
   await chrome.storage.local.set({ [STORAGE_KEY.ATTENDEE]: reg });
   const activeTab = await getActiveTab();
   const base = activeTab?.url?.includes(CONFIG.neon.trialDomain)
@@ -98,7 +141,7 @@ async function navigateToAttendeeEdit(reg, tab) {
   window.close();
 }
 
-// ── ATTENDEE VIEW ──────────────────────────────────────────────────────
+// ── ATTENDEE VIEW ──────────────────────────────────────────────────────────
 async function buildAttendeeView(attendee, tab) {
   const body = document.body;
   body.innerHTML = "";
@@ -220,7 +263,7 @@ async function buildAttendeeView(attendee, tab) {
 
   body.appendChild(table);
 
-  // ── Re-check section ──────────────────────────────────────────────────
+  // ── Re-check section ───────────────────────────────────────────────────────
   // If any conditions are fixable on this page, show a single Re-check button
   // plus a "Show me the field" button for ICE if that condition is present.
   const fixableReasons = reasons.filter(r => r.fixable);
@@ -294,7 +337,7 @@ async function buildAttendeeView(attendee, tab) {
   }
 }
 
-// ── NOT FOUND / GUIDANCE VIEW ──────────────────────────────────────────
+// ── NOT FOUND / GUIDANCE VIEW ──────────────────────────────────────────────
 async function buildNotFoundView(heading, detail) {
   const overrideResult = await chrome.storage.local.get(STORAGE_KEY.MANAGEMENT_OVERRIDE);
   const managementOverride = overrideResult[STORAGE_KEY.MANAGEMENT_OVERRIDE] ?? false;
@@ -304,7 +347,7 @@ async function buildNotFoundView(heading, detail) {
   document.body.appendChild(el("div", { className: "not-found-detail",  textContent: detail  }));
 }
 
-// ── CHECK-IN ACTION ────────────────────────────────────────────────────
+// ── CHECK-IN ACTION ────────────────────────────────────────────────────────
 async function doCheckIn(attendee, tab, btn) {
   btn.disabled = true;
   btn.textContent = "Processing…";
@@ -357,7 +400,7 @@ function showError(message) {
   body.appendChild(screen);
 }
 
-// ── CSV DOWNLOAD ───────────────────────────────────────────────────────
+// ── CSV DOWNLOAD ───────────────────────────────────────────────────────────
 async function saveBadgeCSV(attendee) {
   try {
     const headers = ["Badge Type", "Badge Image", "Account ID", "Print Number"];
@@ -379,7 +422,7 @@ async function saveBadgeCSV(attendee) {
   }
 }
 
-// ── UTILITIES ──────────────────────────────────────────────────────────
+// ── UTILITIES ──────────────────────────────────────────────────────────────
 async function getActiveTab() {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   return tabs?.[0];
