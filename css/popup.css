@@ -1,0 +1,512 @@
+/* ============================================================================
+ * css/popup.css
+ * ----------------------------------------------------------------------------
+ * All styles for the CONvergence Check-In extension popup (popup.html).
+ *
+ * This file is loaded by popup.html via a <link rel="stylesheet"> tag.
+ *
+ * Organization:
+ *   1. Body / page layout
+ *   2. Manager override bar
+ *   3. Status banners (green / yellow / red)
+ *   4. Reason blocks (inside banners)
+ *   5. Re-check section
+ *   6. Info table and badge number display
+ *   7. Name / date / age cutoff text
+ *   8. Warnings block
+ *   9. Button rows and button variants
+ *  10. Help Desk note
+ *  11. Confirmation and error screens
+ *  12. Registrations list view
+ *  13. Not-found / guidance view
+ *  14. Dynamic-layout helper classes (used by popup.js)
+ *
+ * Non-programmer maintenance notes:
+ *   - Colors are standard hex codes (e.g. #dc3545 = red, #28a745 = green).
+ *   - To change the accent red, search for "#dc3545" and replace all.
+ *   - Sizes in "px" are pixels. 12px = small text, 14-15px = body text.
+ *   - To hide an element, add "display: none;" inside its class block.
+ *   - Class names beginning with "." are the selector — do not remove the dot.
+ * ========================================================================= */
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * 1. BODY / PAGE LAYOUT
+ *    Controls the overall popup window size and font.
+ * ───────────────────────────────────────────────────────────────────────── */
+body {
+  min-width: 360px;
+  max-width: 400px;
+  font-family: Arial, sans-serif;
+  font-size: 14px;
+  padding: 8px;
+  margin: 0;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * 2. MANAGER OVERRIDE BAR
+ *    Persistent red bar shown at the top of the popup when a manager
+ *    override is active. Makes it obvious the extension is in override mode.
+ * ───────────────────────────────────────────────────────────────────────── */
+.override-bar {
+  width: 100%;
+  padding: 8px 0;
+  margin: -8px -8px 8px -8px;
+  width: calc(100% + 16px);
+  background: #dc3545;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: bold;
+  text-align: center;
+  letter-spacing: 2px;
+  box-sizing: border-box;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * 3. STATUS BANNERS (green / yellow / red)
+ *    Large colored boxes at the top of the popup that show the overall
+ *    check-in state. Colors match the toolbar icon color.
+ * ───────────────────────────────────────────────────────────────────────── */
+.banner {
+  padding: 10px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.banner-green  { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; font-weight: bold; }
+.banner-yellow { background: #fff3cd; color: #856404; border: 1px solid #ffc107; font-weight: bold; }
+.banner-red    { background: #f8d7da; color: #721c24; border: 2px solid #dc3545; }
+
+/* "STOP" headline inside the red banner */
+.banner-stop {
+  font-size: 16px;
+  font-weight: bold;
+  margin-bottom: 8px;
+  letter-spacing: 1px;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * 4. REASON BLOCKS
+ *    Each individual condition message inside a banner. A banner can have
+ *    multiple reason blocks separated by .reason-divider lines.
+ * ───────────────────────────────────────────────────────────────────────── */
+.reason-block {
+  margin: 0;
+  padding: 4px 0;
+}
+.reason-title {
+  font-weight: bold;
+}
+.reason-body {
+  font-weight: normal;
+  white-space: pre-line;
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+/* Thin divider between separate conditions in the same banner */
+.reason-divider {
+  border: none;
+  border-top: 1px solid rgba(114, 28, 36, 0.25);
+  margin: 6px 0;
+}
+.banner-yellow .reason-divider { border-top-color: rgba(133, 100, 4, 0.25); }
+.banner-green  .reason-divider { border-top-color: rgba(21, 87, 36, 0.25); }
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * 5. RE-CHECK SECTION (below a banner)
+ *    Container for the Re-check button(s) shown when the staffer has
+ *    fixed something on the Neon page and wants the extension to re-read.
+ * ───────────────────────────────────────────────────────────────────────── */
+.recheck-section {
+  margin-bottom: 8px;
+}
+.recheck-block {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * 6. INFO TABLE AND BADGE NUMBER DISPLAY
+ *    The label/value table showing legal name, ID required, etc.
+ *    plus the large badge number block at the top.
+ * ───────────────────────────────────────────────────────────────────────── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 8px;
+}
+table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #eee;
+  vertical-align: middle;
+}
+td.label {
+  font-weight: bold;
+  white-space: nowrap;
+  width: 42%;
+  color: #555;
+  font-size: 12px;
+}
+
+/* Large badge number block (shown after age verified) */
+.badge-number-cell {
+  text-align: center;
+  padding: 10px 6px 14px;
+  border-bottom: 2px solid #ccc;
+}
+.badge-number-label {
+  font-size: 11px;
+  font-weight: bold;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 2px;
+}
+.badge-number-value {
+  font-size: 48px;
+  font-weight: bold;
+  color: #111;
+  line-height: 1;
+  letter-spacing: 2px;
+}
+.badge-ticket-value {
+  font-size: 26px;
+  font-weight: bold;
+  color: #333;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-top: 6px;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * 7. NAME / DATE / AGE CUTOFF TEXT
+ *    Text styling for name and date values in the info table.
+ * ───────────────────────────────────────────────────────────────────────── */
+.legal-name-value {
+  font-size: 18px;
+  font-weight: bold;
+  color: #333;
+}
+.age-cutoff-label {
+  font-size: 12px;
+  color: #856404;
+}
+.age-cutoff-date {
+  font-size: 18px;
+  font-weight: bold;
+  color: #856404;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * 8. WARNINGS BLOCK
+ *    Standalone yellow warning box (separate from status banner).
+ * ───────────────────────────────────────────────────────────────────────── */
+.warning {
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 4px;
+  padding: 8px;
+  margin-bottom: 8px;
+  white-space: pre-line;
+  font-size: 12px;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * 9. BUTTON ROWS AND BUTTON VARIANTS
+ *    Every button style used in the popup. Hover colors are slightly
+ *    darker shades of the base button color.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+/* Row layout for small side-by-side buttons */
+.btn-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+/* "Show Me" button — yellow/amber */
+.btn-show-field {
+  flex: 1;
+  padding: 4px 8px;
+  background: #856404;
+  color: white;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.btn-show-field:hover { background: #664d03; }
+
+/* Small Re-check button (inside a row) */
+.btn-recheck {
+  flex: 1;
+  padding: 4px 8px;
+  background: #0d6efd;
+  color: white;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.btn-recheck:hover { background: #0a58ca; }
+
+/* Full-width Re-check button */
+.btn-recheck-large {
+  width: 100%;
+  padding: 10px;
+  background: #0d6efd;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 15px;
+  font-weight: bold;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+.btn-recheck-large:hover { background: #0a58ca; }
+
+/* Age-verified button — orange */
+.btn-age-verify {
+  width: 100%;
+  padding: 10px;
+  background: #fd7e14;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 15px;
+  font-weight: bold;
+  cursor: pointer;
+  margin-bottom: 4px;
+}
+.btn-age-verify:hover { background: #e06a00; }
+
+/* Primary check-in button — green */
+.btn-checkin {
+  width: 100%;
+  padding: 10px;
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 15px;
+  font-weight: bold;
+  cursor: pointer;
+}
+.btn-checkin:hover    { background: #218838; }
+.btn-checkin:disabled { background: #6c757d; cursor: not-allowed; }
+
+/* "Disabled by hold" button — grey with red border */
+.btn-no-issue {
+  width: 100%;
+  padding: 10px;
+  background: #6c757d;
+  color: white;
+  border: 2px solid #dc3545;
+  border-radius: 4px;
+  font-size: 15px;
+  font-weight: bold;
+  cursor: not-allowed;
+  letter-spacing: 1px;
+}
+
+/* Override button used in registrations list */
+.btn-override {
+  padding: 5px 10px;
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: bold;
+}
+.btn-override:hover { background: #b02a37; }
+
+/* "Check In →" button used in registrations list */
+.btn-select {
+  padding: 5px 10px;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.btn-select:hover { background: #0056b3; }
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * 10. HELP DESK NOTE
+ *     Red-styled notices directing staff to send attendee to Help Desk.
+ * ───────────────────────────────────────────────────────────────────────── */
+.helpdesk-note {
+  width: 100%;
+  padding: 10px;
+  background: #f8d7da;
+  color: #721c24;
+  border: 1px solid #dc3545;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: bold;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+/* Inline variant used in registrations list rows */
+.helpdesk-note-inline {
+  font-size: 12px;
+  font-weight: bold;
+  color: #721c24;
+  padding: 4px 8px;
+  background: #f8d7da;
+  border: 1px solid #dc3545;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * 11. CONFIRMATION AND ERROR SCREENS
+ *     Full-popup success / failure displays shown after check-in completes.
+ * ───────────────────────────────────────────────────────────────────────── */
+.confirm-screen {
+  text-align: center;
+  padding: 20px 10px;
+  background: #d4edda;
+  border-radius: 4px;
+}
+.confirm-icon   { font-size: 40px; color: #28a745; margin-bottom: 4px; }
+.confirm-title  { font-size: 18px; font-weight: bold; color: #155724; margin-bottom: 8px; }
+.confirm-name   { font-size: 16px; font-weight: bold; margin-bottom: 4px; }
+.confirm-badge  { font-size: 14px; color: #555; margin-bottom: 8px; }
+.confirm-detail { font-size: 12px; color: #155724; white-space: pre-line; }
+
+.error-screen {
+  text-align: center;
+  padding: 16px 10px;
+  background: #f8d7da;
+  border-radius: 4px;
+}
+.error-icon    { font-size: 32px; color: #dc3545; margin-bottom: 8px; }
+.error-message { font-size: 13px; color: #721c24; white-space: pre-line; text-align: left; }
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * 12. REGISTRATIONS LIST VIEW
+ *     The list of attendees shown on the eventRegDetails page.
+ * ───────────────────────────────────────────────────────────────────────── */
+.heading {
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+.reg-row {
+  padding: 8px;
+  margin-bottom: 6px;
+  border-radius: 4px;
+  border: 1px solid #ddd;
+}
+.reg-row-green  { background: #f8fff9; }
+.reg-row-yellow { background: #fffef0; }
+.reg-row-red    { background: #fff5f5; }
+.reg-name   { font-weight: bold; margin-bottom: 2px; }
+.reg-ticket { font-size: 12px; color: #555; margin-bottom: 4px; }
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * 13. NOT-FOUND / GUIDANCE VIEW
+ *     Shown when the popup opens on a page the extension doesn't handle,
+ *     or when storage is empty.
+ * ───────────────────────────────────────────────────────────────────────── */
+.not-found-heading {
+  font-weight: bold;
+  font-size: 14px;
+  color: #721c24;
+  margin-bottom: 6px;
+  padding: 8px;
+  background: #f8d7da;
+  border-radius: 4px;
+}
+.not-found-detail {
+  font-size: 12px;
+  color: #555;
+  white-space: pre-line;
+  padding: 8px;
+  line-height: 1.6;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * 14. DYNAMIC-LAYOUT HELPER CLASSES
+ *     Used by popup.js in place of old inline style.cssText assignments.
+ *     Grouped here so popup.js no longer carries hard-coded style strings.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+/* Full-width table used inside the attendee view (info rows + age-verify view) */
+.info-table {
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+/* Left (label) cell inside the info table */
+.info-label-cell {
+  font-size: 14px;
+  padding: 6px 8px;
+  white-space: nowrap;
+  width: 38%;
+}
+
+/* Right (value) cell inside the info table */
+.info-value-cell {
+  padding: 6px 8px;
+  font-size: 15px;
+}
+
+/* Badge-number block wrapper used when age has been verified */
+.badge-number-cell-dynamic {
+  text-align: center;
+  padding: 12px 6px 10px;
+  border-bottom: 2px solid #ccc;
+  margin-bottom: 10px;
+}
+
+/* Row holding the "I have read the notes" checkbox + label */
+.notes-confirm-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  font-size: 13px;
+}
+
+/* The checkbox itself */
+.notes-confirm-chk {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* The label for the checkbox */
+.notes-confirm-lbl {
+  cursor: pointer;
+}
+
+/* Modifier class applied to .btn-checkin when a hold or red condition
+   forces the button into a disabled visual state. */
+.btn-checkin.is-blocked {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* end css/popup.css */

@@ -1,0 +1,26 @@
+# ── Security ───────────────────────────────────────────────────────────
+# The password hash generator must never be committed to the public repo.
+# It does not contain the real password, but its presence signals that
+# someone might be generating hashes — and it could be used to test
+# guesses against the hash in config.js.
+tools/generate-password-hash.html
+
+# ── OS and editor files ────────────────────────────────────────────────
+.DS_Store
+desktop.ini
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# ── Node (if anyone uses npm tools locally) ────────────────────────────
+node_modules/
+npm-debug.log
+
+# ── Playwright test harness ────────────────────────────────────────────
+.env
+tests/.auth/
+tests/.userdata/
+test-results/
+playwright-report/

@@ -1,58 +1,105 @@
+<!-- extension_options_page.html -->
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Badge Utility Options</title>
-    <style>
-        body: {
-            padding: 10px;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <title>CONvergence Check-In — Options</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 16px;
+      max-width: 400px;
+    }
+
+    h2 {
+      font-size: 16px;
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 4px;
+      font-weight: bold;
+      font-size: 13px;
+    }
+
+    input[type="text"],
+    input[type="password"] {
+      width: 100%;
+      padding: 6px;
+      box-sizing: border-box;
+      margin-bottom: 12px;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+      font-size: 13px;
+    }
+
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .checkbox-row input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+    }
+
+    .checkbox-row label {
+      margin: 0;
+      font-weight: normal;
+      cursor: pointer;
+    }
+
+    #password-row {
+      display: none;
+      margin-bottom: 12px;
+    }
+
+    #status {
+      min-height: 20px;
+      margin-bottom: 8px;
+      font-size: 13px;
+      font-weight: bold;
+      color: #155724;
+    }
+
+    #status.error { color: #721c24; }
+
+    button {
+      padding: 8px 20px;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    button:hover { background: #0056b3; }
+  </style>
 </head>
-
 <body>
-<p>
+  <h2>CONvergence Check-In — Options</h2>
 
-    <label>
-        Workstation ID:
-        <input type="text" id="workstation">
-    </label>
+  <div class="checkbox-row">
+    <input type="checkbox" id="mngtoverride">
+    <label for="mngtoverride">Enable Management Override</label>
+  </div>
 
-</p>
-     <!--
-<p>
-    Scanner:
-    <select id="scanner">
-        <option value="none">None</option>
-        <option value="one">One</option>
-        <option value="two">Two</option>
-    </select>
-</p>
+  <div id="password-row">
+    <label for="mngt-password">Management Password:</label>
+    <input type="password" id="mngt-password" placeholder="Enter password to enable override">
+  </div>
 
-<p>
+  <div id="status"></div>
+  <button id="save">Save Options</button>
 
-    <label>
-        Websocket Server:
-        <input type="text" id="websocketserver">
-    </label>
-
-</p>
-         -->
-<p>
-
-    <label>
-        <input type="checkbox" id="mngtoverride">
-        Management Override Enabled
-    </label>
-
-<p id="insertinputs"></p>
-
-</p>
-
-
-<div id="status"></div>
-<button id="save">Save</button>
-
-<script src="js/options.js"></script>
-
+  <script src="config.js"></script>
+  <script src="js/constants.js"></script>
+  <script src="js/options.js"></script>
 </body>
 </html>
+<!-- end extension_options_page.html -->

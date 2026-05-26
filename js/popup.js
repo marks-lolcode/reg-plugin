@@ -1,269 +1,877 @@
-/**
- * Created by mreso_000 on 1/10/14.
- */
+// js/popup.js
+//
+// ============================================================================
+// CONvergence Check-In Extension — Popup UI Script
+// ============================================================================
+//
+// This file controls what staff see when they click the extension's toolbar
+// icon. It reads cached data from chrome.storage.local (written by the
+// content scripts) and renders one of several views depending on which
+// Neon page is currently open in the active tab.
+//
+// Views rendered by this file:
+//   1. Account page view       — shown on /admin/accounts/NNN pages
+//   2. Registrations view      — shown on eventRegDetails.do pages
+//   3. Attendee view           — shown on attendeeEdit.do pages (main check-in)
+//   4. Confirmation / Error    — shown after a check-in attempt
+//   5. Not-Found view          — shown when data can't be read or page is wrong
+//
+// Globals injected by popup.html before this file loads:
+//   CONFIG       — annual configuration (from config.js)
+//   STATE        — green/yellow/red constants (from constants.js)
+//   ACTION       — message action names (from constants.js)
+//   STORAGE_KEY  — chrome.storage.local key names (from constants.js)
+//   CONDITION    — condition key names (from constants.js)
+//
+// ============================================================================
+// MAINTENANCE NOTES
+// ============================================================================
+// - The "Badge Number" cell is intentionally HIDDEN until ALL red conditions
+//   are cleared AND no required fields are missing. This prevents staff from
+//   reflexively reading out a badge number before resolving the problem.
+//   The same rule enables/disables the "Badge Delivered" button — the two
+//   signals are intentionally coupled.
+// - To change this behavior, edit the `canIssueBadge` computation near the
+//   top of buildAttendeeView().
+// ============================================================================
 
-// This script is used in the popup HTML that appears when you click the extension popup in the omni-box as appropriate
+document.addEventListener("DOMContentLoaded", displayPopup);
 
-//When the window loads create the page data to display
-window.onload = displayAttendeeInfo;
-function displayAttendeeInfo() {
-    var attendeeData = chrome.extension.getBackgroundPage(); //removed to see if works: .attendeeInfo;
-    console.log("Popup attempted to receive data and it received: "+attendeeData);
-    if (attendeeData)
-        buildAttendeeDataPage(attendeeData);
-    else
-        buildNotFoundDataPage();
+
+// ── OVERRIDE BANNER ────────────────────────────────────────────────────
+// Red bar shown at top of every view while Manager Override is active.
+// Set by the Options page; stored in chrome.storage.local.
+
+// ── OVERRIDE BANNER ────────────────────────────────────────────────────────
+function buildOverrideBanner() {
+  const bar = el("div", { className: "override-bar" });
+  bar.textContent = "MANAGER OVERRIDE ACTIVE";
+  return bar;
 }
 
 
-// This builds the page body when attendee info is involved
-// and calls whatever is needed to facilitate this
-function buildAttendeeDataPage(attendeeData) {
-    createTable(attendeeData);
-  // addButton("badgePickup");
+// ── ENTRY POINT ────────────────────────────────────────────────────────
+// Figures out which Neon page is active and routes to the right view.
+// The `document.body.dataset.rendered` guard prevents double-render in
+// case the popup is somehow opened twice quickly.
+
+// ── ENTRY POINT ────────────────────────────────────────────────────────────
+async function displayPopup() {
+  if (document.body.dataset.rendered) return;
+  document.body.dataset.rendered = "1";
+
+  const activeTab = await getActiveTab();
+  const url = activeTab?.url ?? "";
+  console.log("popup.js: displayPopup active tab url =", url);
+
+  if (url.includes("/admin/accounts/")) {
+    // Account overview page — just shows notes and a "Proceed" button
+    buildAccountLoadingView();
+    const result  = await chrome.storage.local.get(STORAGE_KEY.ACCOUNT);
+    const account = result[STORAGE_KEY.ACCOUNT];
+    account
+      ? buildAccountView(account, activeTab)
+      : buildNotFoundView(
+          "Could not read account data.",
+          "The page may still be loading. Please wait a moment and try again."
+        );
+
+  } else if (url.includes("attendeeEdit")) {
+    // Main check-in page
+    const result   = await chrome.storage.local.get(STORAGE_KEY.ATTENDEE);
+    const attendee = result[STORAGE_KEY.ATTENDEE];
+    attendee
+      ? buildAttendeeView(attendee, activeTab)
+      : buildNotFoundView(
+          "No attendee data found.",
+          "Navigate to an attendee page first, then try again."
+        );
+
+  } else if (url.includes("eventRegDetails")) {
+    // Registration details page — list of attendees on one registration
+    const result        = await chrome.storage.local.get(STORAGE_KEY.REGISTRATIONS);
+    const registrations = result[STORAGE_KEY.REGISTRATIONS];
+    registrations
+      ? buildRegistrationsViewOrNote(registrations, activeTab)
+      : buildNotFoundView(
+          "No registration data found.",
+          "Navigate to a registration page first, then try again."
+        );
+
+  } else {
+    // Not on any recognized Neon page
+    buildNotFoundView(
+      "Wrong page.",
+      "To use this tool:\n1. Search for the attendee in Neon\n2. Click their name to open the account page\n3. Click the extension icon"
+    );
+  }
 }
 
-// This builds the page body when NO attendee info is involved
-// and calls whatever is needed to facilitate this
-// TODO make this into something better than a blank page
-function buildNotFoundDataPage() {
-    console.log("Building table missing attendee");
-    var body=document.getElementsByTagName('body')[0];
-    var tbl=document.createElement('table');
-    tbl.style.width='100%';
-    tbl.setAttribute('border','1');
-    var tbdy=document.createElement('tbody');
-    for(var i=0;i<3;i++){
-        var tr=document.createElement('tr');
-        for(var j=0;j<2;j++){
-            if(i==2 && j==1){
-                break
-            } else {
-                var td=document.createElement('td');
-                td.appendChild(document.createTextNode('\u0020'))
-                i==1&&j==1?td.setAttribute('rowSpan','2'):null;
-                tr.appendChild(td)
-            }
-        }
-        tbdy.appendChild(tr);
-    }
-    tbl.appendChild(tbdy);
-    body.appendChild(tbl)
 
+// ── ACCOUNT PAGE VIEW ──────────────────────────────────────────────────
+
+function buildAccountLoadingView() {
+  document.body.innerHTML = "";
+  const d = el("div", { className: "not-found-detail", textContent: "Reading account…" });
+  document.body.appendChild(d);
 }
 
-// Makes a table containing attendee data
-// Used during POC and generally messy code :-)
-// TODO Cleanup or remove this
-function createTable(attendeeData) {
-    console.log("Building table with attendee data");
-    //Build a table
-    var body=document.getElementsByTagName('body')[0];
-    var tbl=document.createElement('table');
-    tbl.style.width='100%';
-    tbl.setAttribute('border','1');
-    var tbdy=document.createElement('tbody');
-    // Make a row for each piece of attendee data
-    for(var i=0;i<attendeeData.length;i++){
-        console.log("Table element value: "+attendeeData[i]);
-        var tr=document.createElement('tr');
-        var td=document.createElement('td');
-        if (attendeeData[i]==null) {
-            td.appendChild(document.createTextNode(chrome.i18n.getMessage("dbValueNotSetErrorMsg")))
-        } else {
-            td.appendChild(document.createTextNode(attendeeData[i].valueOf()))
-        }
-        //add the cell
-        tr.appendChild(td)
-        //add the row
-        tbdy.appendChild(tr);
-    }
-    tbl.appendChild(tbdy);
-    body.appendChild(tbl);
-    // The table has finished being built
+// NOTE: account-page scraping is performed by js/accountPage.js, which
+// runs as a content script directly on the account page. The popup just
+// reads the cached result from chrome.storage.local. Do not re-scrape here.
 
+// ── REGISTRATIONS: NOTE GATE ───────────────────────────────────────────────
+// If the registration has a note, show it first and require acknowledgment
+// before proceeding to the normal attendee list.
+async function buildRegistrationsViewOrNote(registrationData, tab) {
+  const note = registrationData.note ?? "";
+  if (!note) {
+    buildRegistrationsView(registrationData, tab);
+    return;
+  }
 
+  const ackResult = await chrome.storage.local.get(STORAGE_KEY.NOTE_ACKNOWLEDGED);
+  const acknowledged = ackResult[STORAGE_KEY.NOTE_ACKNOWLEDGED] ?? false;
+  if (acknowledged) {
+    buildRegistrationsView(registrationData, tab);
+    return;
+  }
 
+  // Show note screen
+  const overrideResult = await chrome.storage.local.get(STORAGE_KEY.MANAGEMENT_OVERRIDE);
+  const managementOverride = overrideResult[STORAGE_KEY.MANAGEMENT_OVERRIDE] ?? false;
 
-    //Add a button to download a file to print the badge
-    //This should really be seperate, but oh well
-    var elname = "badgebutton1";
-    //var elfunction = doBadgePrintDownload(attendeeData);
-    var element = document.createElement("input");
-    element.setAttribute("type", "button");
-    element.setAttribute("value", chrome.i18n.getMessage("badgePickupButton"));
-    element.setAttribute("name", elname);
-    element.setAttribute("class", "button");
-    body.appendChild(element);
+  const body = document.body;
+  body.innerHTML = "";
 
+  if (managementOverride) body.appendChild(buildOverrideBanner());
 
-    var el = document.getElementsByName(elname)[0];
+  const screen = el("div", { className: "note-screen" });
+  screen.appendChild(el("div", { className: "note-heading", textContent: "📋 Registration Note" }));
+  const noteText = el("div", { className: "note-text" });
+  noteText.textContent = note;
+  screen.appendChild(noteText);
 
-    if (el.addEventListener)
-        el.addEventListener("click", function() {
-            doBadgePrintDownload(attendeeData);
-        }, false );
-    else if (el.attachEvent)
-        el.attachEvent('onclick', function() {
-            doBadgePrintDownload(attendeeData);
-        });
+  const ackBtn = el("button", { className: "btn-note-ack" });
+  ackBtn.textContent = "Note Read ✓";
+  ackBtn.addEventListener("click", async () => {
+    await chrome.storage.local.set({ [STORAGE_KEY.NOTE_ACKNOWLEDGED]: true });
+    buildRegistrationsView(registrationData, tab);
+  });
+  screen.appendChild(ackBtn);
 
+  body.appendChild(screen);
 }
 
-// This is what happens when the button is clicked
-// Note the hard coded nature of the information ;-)
-function doBadgePrintDownload(attendeeData) {
+async function buildAccountView(account, tab) {
+  const body = document.body;
+  body.innerHTML = "";
 
-    var backgroundTif = attendeeData[7] + ".tif";
+  const overrideResult     = await chrome.storage.local.get(STORAGE_KEY.MANAGEMENT_OVERRIDE);
+  const managementOverride = overrideResult[STORAGE_KEY.MANAGEMENT_OVERRIDE] ?? false;
 
+  if (managementOverride) body.appendChild(buildOverrideBanner());
 
+  // ── Navigation error state ──
+  if (account.navError) {
+    const banner = el("div", { className: "banner banner-red" });
+    const stop   = el("div", { className: "banner-stop", textContent: "⛔ Registration Not Found" });
+    const msg    = el("div", { className: "reason-body", textContent: account.navError });
+    banner.appendChild(stop);
+    banner.appendChild(msg);
+    body.appendChild(banner);
 
-
-    var ticketText ="ADULT";
-    var badgeBackgroundTif = "ADULT.tif";
-    var attendeeBadgeName = "Olaf the Snowman";
-    var badgeNumber = "A54871";
-
-    //saveTextAsFile(badgeNumber, attendeeBadgeName, badgeBackgroundTif, ticketText );
-    saveTextAsFile(attendeeData[2], attendeeData[6], backgroundTif, attendeeData[4] );
-
-    window.confirm("Badge printed. Window will now close.");
-    //window.close();
-
-    // Here we can try to send TCP RAW
-    /*
-    var socket = chrome.socket;
-    var socketInfo;
-
-    socket.create("tcp",{}, function(_socketInfo) {
-        socketInfo = _socketInfo;
-        socket.connect(socketInfo.socketId,"127.0.0.1",6000, function() {
-            socket.write(socketInfo.socketId, "test data send", function() {
-                socket.disconnect(socketInfo.socketId, function() {
-                    socket.destroy(socketInfo.socketId);
-                });
-            });
-        });
+    const retryBtn = el("button", { className: "btn-checkin", textContent: "Try Again →" });
+    retryBtn.addEventListener("click", () => {
+      chrome.storage.local.remove([STORAGE_KEY.ACCOUNT]);
+      chrome.tabs.update(tab.id, { url: tab.url });
+      window.close();
     });
-    chrome.socket.destroy(conn);
+    body.appendChild(retryBtn);
+    return;
+  }
 
-    //ANOTHER TRY
+  // ── Account holds banner (RED — blocks check-in) ──
+  const holds = account.holds ?? { operationsHold: false, artShowHold: false, registrationHold: false, hasAnyHolds: false };
 
-    chrome.experimental.socket.create('tcp', '127.0.0.1', 8080, function(socketInfo) {
-        chrome.experimental.socket.connect(socketInfo.socketId, function (result) {
-            chrome.experimental.socket.write(socketInfo.socketId, "Hello, world!");
+  if (holds.hasAnyHolds) {
+    const banner = el("div", { className: "banner banner-red" });
+    
+    if (managementOverride) {
+      // ── MANAGER OVERRIDE: Show detailed holds with resolution instructions ──
+      banner.appendChild(el("div", { className: "banner-stop", textContent: "⛔ ACCOUNT HOLDS" }));
+      
+      const holdsList = [];
+      if (holds.registrationHold) {
+        holdsList.push({
+          title: CONFIG.holdMessages[2].title,
+          body: CONFIG.holdMessages[2].body
         });
+      }
+      if (holds.artShowHold) {
+        holdsList.push({
+          title: CONFIG.holdMessages[1].title,
+          body: CONFIG.holdMessages[1].body
+        });
+      }
+      if (holds.operationsHold) {
+        holdsList.push({
+          title: CONFIG.holdMessages[0].title,
+          body: CONFIG.holdMessages[0].body
+        });
+      }
+
+      holdsList.forEach((hold, i) => {
+        if (i > 0) banner.appendChild(el("hr", { className: "reason-divider" }));
+        const block = el("div", { className: "reason-block" });
+        block.appendChild(el("div", { 
+          className: "reason-title", 
+          textContent: hold.title 
+        }));
+        block.appendChild(el("div", { 
+          className: "reason-body", 
+          textContent: hold.body 
+        }));
+        banner.appendChild(block);
+      });
+
+      body.appendChild(banner);
+
+      // Re-check button for manager override
+      const recheckBtn = el("button", { 
+        className: "btn-recheck-large",
+        textContent: "Re-check ↺" 
+      });
+      recheckBtn.addEventListener("click", async () => {
+        const result = await chrome.tabs.sendMessage(tab.id, { action: ACTION.GET_ACCOUNT_DATA });
+        if (result) {
+          await chrome.storage.local.set({ [STORAGE_KEY.ACCOUNT]: result });
+          body.innerHTML = "";
+          if (managementOverride) body.appendChild(buildOverrideBanner());
+          await buildAccountView(result, tab);
+        }
+      });
+      body.appendChild(recheckBtn);
+
+} else {
+      // ── REGULAR STAFF: Just show "SEND TO HELP DESK" ──
+      banner.appendChild(el("div", { className: "banner-stop", textContent: "⛔ SEND TO HELP DESK" }));
+      body.appendChild(banner);
+    }
+
+    return;
+  }
+
+  // ── Account notes banner (YELLOW — requires acknowledgment) ──
+  const hasNotes = account.notes && account.notes.length > 0;
+
+  if (hasNotes) {
+    const banner  = el("div", { className: "banner banner-yellow" });
+    const heading = el("div", { className: "reason-title" });
+    heading.textContent = `⚠ This account has ${account.notes.length} note(s) — read before proceeding:`;
+    banner.appendChild(heading);
+
+    account.notes.forEach((note, i) => {
+      if (i > 0) banner.appendChild(el("hr", { className: "reason-divider" }));
+      const block = el("div", { className: "reason-block" });
+      if (note.title) block.appendChild(el("div", { className: "reason-title", textContent: note.title }));
+      if (note.body)  block.appendChild(el("div", { className: "reason-body",  textContent: note.body  }));
+      banner.appendChild(block);
     });
-     */
+    body.appendChild(banner);
+
+    const checkRow = el("div");
+    checkRow.style.cssText = "display:flex; align-items:center; gap:8px; margin:8px 0; font-size:13px;";
+    const chk = el("input"); chk.type = "checkbox"; chk.id = "notes-confirm-chk";
+    chk.style.cssText = "width:16px; height:16px; cursor:pointer; flex-shrink:0;";
+    const lbl = el("label"); lbl.htmlFor = "notes-confirm-chk";
+    lbl.textContent = "I have read and understood the note(s) above";
+    lbl.style.cursor = "pointer";
+    checkRow.appendChild(chk);
+    checkRow.appendChild(lbl);
+    body.appendChild(checkRow);
+
+    const proceedBtn = el("button", { className: "btn-checkin", textContent: "Proceed to Check-In →" });
+    proceedBtn.disabled = true;
+    chk.addEventListener("change", () => { proceedBtn.disabled = !chk.checked; });
+    proceedBtn.addEventListener("click", () => navigateToEventReg(tab, account));
+    body.appendChild(proceedBtn);
+
+  } else {
+    // No notes, no holds — auto-navigate to event registration
+    const banner = el("div", { className: "banner banner-green" });
+    banner.textContent = account.accountName
+      ? `✓ ${account.accountName} — Ready for check-in`
+      : "✓ Account ready for check-in";
+    body.appendChild(banner);
+
+    // AUTO-NAVIGATE immediately
+    navigateToEventReg(tab, account);
+  }
 }
 
-function saveTextAsFile(badgeNumText, badgeNameText, background, tix)
-{
-    // This is from
-    // http://thiscouldbebetter.wordpress.com/2012/12/18/loading-editing-and-saving-a-text-file-in-html5-using-javascrip/
-
-    //var textToWrite = "THIS IS SAMPLE TEXT TO WRITE TO A FILE";
-    //var textFileAsBlob = new Blob([textToWrite], {type:'text/plain'});
-    var textHeader = '"Badge Type","Badge File BackGround","Badge Number","Badge Name","Workstation ID"';
-    var text = new Array();
-    text[0] = tix;
-    text[1] = background;
-    text[2] = badgeNumText;
-    text[3] = badgeNameText;
-
-    text[4] = chrome.storage.local.get( "workstationId", function ( items )
-                                {
-                                    console.log(items.workstationId);
-                                } );
-
-    var textToWrite = convertArrayToCSVBlob(text, textHeader);
-    var textFileAsBlob = new Blob([textToWrite], {type:'text/csv'});
-    //This makes sure bogus characters will not screw up the filename
-    var desiredNameText = badgeNameText.replace(/[^\w\s]/gi, '');
-    var fileNameToSaveAs = badgeNumText +" - "+ desiredNameText +".csv";
-
-    //This is the magic that actually downloads the file generated
-    var downloadLink = document.createElement("a");
-    downloadLink.download = fileNameToSaveAs;
-    downloadLink.innerHTML = "Download File";
-    if (window.webkitURL != null)
-    {
-        // Chrome allows the link to be clicked
-        // without actually adding it to the DOM.
-        downloadLink.href = window.webkitURL.createObjectURL(textFileAsBlob);
+function navigateToEventReg(tab, account) {
+  // Store event names so the auto-nav logic in accountPage.js can filter
+  // registrations. currentEventNames are checked first, then testEventNames.
+  chrome.storage.local.set({
+    [STORAGE_KEY.ACCOUNT_AUTO_NAV]: {
+      accountId: account.accountId,
+      currentEventNames: Array.isArray(CONFIG.event.currentEventNames)
+        ? CONFIG.event.currentEventNames
+        : [CONFIG.event.currentEventNames],
+      testEventNames: Array.isArray(CONFIG.event.testEventNames)
+        ? CONFIG.event.testEventNames
+        : [CONFIG.event.testEventNames],
+      timestamp: Date.now(),
     }
-    else
-    {
-        // Firefox requires the link to be added to the DOM
-        // before it can be clicked.
-        downloadLink.href = window.URL.createObjectURL(textFileAsBlob);
-        downloadLink.onclick = destroyClickedElement;
-        downloadLink.style.display = "none";
-        document.body.appendChild(downloadLink);
-    }
-    downloadLink.click();
-}
-
-// This makes an array into a set of double quoted comma delimited text
-// Which is used in comma delimited files
-function convertArrayToCSVBlob(arrayToConvert, textHeader) {
-    var str = "";
-    str = textHeader + "\n";
-    for (var i = 0; i < arrayToConvert.length - 1; i++) {
-        var line = '';
-        line += '"' + arrayToConvert[i] + '",';
-        line.slice(0,line.Length-1);
-        str += line;
-    }
-    str += '"' + arrayToConvert[arrayToConvert.length - 1] +'"';
-    str += "\n";
-    return str;
+  }, () => {
+    const tabUrl  = new URL(tab.url);
+    const newUrl  = `${tabUrl.protocol}//${tabUrl.host}/admin/accounts/${account.accountId}/event-registrations?tab=Attendees`;
+    chrome.tabs.update(tab.id, { url: newUrl });
+    window.close();
+  });
 }
 
 
+// ── REGISTRATIONS VIEW ─────────────────────────────────────────────────
+// Shown on eventRegDetails.do — lets staff pick which attendee on this
+// registration to check in.
 
+async function buildRegistrationsView(registrationData, tab) {
+  const body = document.body;
+  body.innerHTML = "";
 
+  const overrideResult     = await chrome.storage.local.get(STORAGE_KEY.MANAGEMENT_OVERRIDE);
+  const managementOverride = overrideResult[STORAGE_KEY.MANAGEMENT_OVERRIDE] ?? false;
 
+  if (managementOverride) body.appendChild(buildOverrideBanner());
 
+  const notes    = registrationData.notes ?? [];
+  const hasNotes = notes.length > 0;
 
+  if (hasNotes) {
+    // Registration-level notes must be acknowledged before attendee list shows
+    const banner  = el("div", { className: "banner banner-yellow" });
+    const heading = el("div", { className: "reason-title" });
+    heading.textContent = `⚠ This registration has ${notes.length} note(s) — read before proceeding:`;
+    banner.appendChild(heading);
 
+    notes.forEach((note, i) => {
+      if (i > 0) banner.appendChild(el("hr", { className: "reason-divider" }));
+      const block = el("div", { className: "reason-block" });
+      if (note.title) block.appendChild(el("div", { className: "reason-title", textContent: note.title }));
+      if (note.body)  block.appendChild(el("div", { className: "reason-body",  textContent: note.body  }));
+      banner.appendChild(block);
+    });
+    body.appendChild(banner);
 
+    const checkRow = el("div");
+    checkRow.style.cssText = "display:flex; align-items:center; gap:8px; margin:8px 0; font-size:13px;";
+    const chk = el("input"); chk.type = "checkbox"; chk.id = "reg-notes-confirm-chk";
+    chk.style.cssText = "width:16px; height:16px; cursor:pointer; flex-shrink:0;";
+    const lbl = el("label"); lbl.htmlFor = "reg-notes-confirm-chk";
+    lbl.textContent = "I have read and understood the note(s) above";
+    lbl.style.cursor = "pointer";
+    checkRow.appendChild(chk);
+    checkRow.appendChild(lbl);
+    body.appendChild(checkRow);
 
+    const proceedBtn = el("button", { className: "btn-checkin", textContent: "Show Attendee List →" });
+    proceedBtn.disabled = true;
+    chk.addEventListener("change", () => { proceedBtn.disabled = !chk.checked; });
+    proceedBtn.addEventListener("click", () => {
+      body.innerHTML = "";
+      if (managementOverride) body.appendChild(buildOverrideBanner());
+      buildAttendeeListContent(registrationData, tab, body, managementOverride);
+    });
+    body.appendChild(proceedBtn);
 
-
-
-
-
-
-
-
-
-
-
-// TODO FIX or remove
-// This puts the badge printing button on the form for use.
-function addButton(buttonName) {
-    var td = document.getElementsByName('cancel')[0].parentNode;
-    var element = document.createElement("input");
-    element.setAttribute("type", "button");
-    switch (buttonName) {
-        case "badgePickup":
-            element.setAttribute("value", "Badge Pick Up");
-            var elname = "badgebutton1";
-            var elfunction = doBadgePrint;
-            break;
-        case "badgeLost":
-            element.setAttribute("value", "Badge Lost / Issue Replacement");
-            var elname = "badgelostbutton1";
-            var elfunction = doBadgeReissue;
-            break;
-    }
-    element.setAttribute("name", elname);
-    element.setAttribute("class", "button");
-    td.appendChild(element);
-    var el = document.getElementsByName(elname)[0];
-    if (el.addEventListener)
-        el.addEventListener("click", elfunction, false );
-    else if (el.attachEvent)
-        el.attachEvent('onclick', elfunction);
+  } else {
+    buildAttendeeListContent(registrationData, tab, body, managementOverride);
+  }
 }
+
+function buildAttendeeListContent(registrationData, tab, body, managementOverride) {
+  body.appendChild(el("div", { className: "heading", textContent: "Select the attendee to check in:" }));
+
+  registrationData.data.forEach(reg => {
+    const row      = el("div", { className: `reg-row reg-row-${reg.state}` });
+    const nameText = reg.preferredName ?
+      `${reg.legalName} (${reg.preferredName})` : reg.legalName;
+    row.appendChild(el("div", { className: "reg-name", textContent: nameText }));
+
+    if (reg.state === STATE.RED) {
+      if (managementOverride) {
+        const overrideBtn = el("button", { className: "btn-override", textContent: "⚠ Override — Check In →" });
+        overrideBtn.addEventListener("click", () => navigateToAttendeeEdit(reg, tab));
+        row.appendChild(overrideBtn);
+      } else {
+        row.appendChild(el("div", { className: "helpdesk-note-inline", textContent: "Send to Help Desk" }));
+      }
+    } else {
+      row.appendChild(el("div", { className: "reg-ticket", textContent: reg.ticket }));
+      const btn = el("button", { className: "btn-select", textContent: "Check In →" });
+      btn.addEventListener("click", () => navigateToAttendeeEdit(reg, tab));
+      row.appendChild(btn);
+    }
+
+    body.appendChild(row);
+  });
+}
+
+async function navigateToAttendeeEdit(reg, tab) {
+  // Clear the age-verified flag when moving to a new attendee so the
+  // age verification step is enforced freshly for this person.
+  await chrome.storage.local.remove([STORAGE_KEY.AGE_VERIFIED]);
+  await chrome.storage.local.remove([STORAGE_KEY.AGE_VERIFIED, STORAGE_KEY.NOTE_ACKNOWLEDGED]);
+  await chrome.storage.local.set({ [STORAGE_KEY.ATTENDEE]: reg });
+  await chrome.tabs.update(tab.id, {
+    url: `https://${CONFIG.neon.productionDomain}/np/admin/event/attendeeEdit.do?id=${reg.neonAttendeeId}&acct=${reg.accountId}`,
+  });
+  window.close();
+}
+
+
+// ── ATTENDEE VIEW ──────────────────────────────────────────────────────
+// Main check-in view. Shown on attendeeEdit.do pages.
+//
+// Visibility rules (IMPORTANT — read before editing):
+//
+//   Badge Number / Ticket cell:  shown ONLY when canIssueBadge is true.
+//                                This is intentional — we don't want staff
+//                                reading out a badge number while a red or
+//                                blocking-yellow condition is still visible.
+//   Badge Delivered button:      enabled ONLY when canIssueBadge is true.
+//                                The two signals are deliberately coupled.
+//   Re-check button:             shown whenever there's any red OR yellow
+//                                condition on screen. After clicking, the
+//                                view re-renders with fresh scraped data;
+//                                if all issues are now clear, the badge
+//                                number appears at the same time the
+//                                Badge Delivered button becomes active.
+
+// ── ATTENDEE VIEW ──────────────────────────────────────────────────────────
+async function buildAttendeeView(attendee, tab) {
+  const body = document.body;
+  body.innerHTML = "";
+
+  // ── Read override and age-verification flags from storage ──
+  const overrideResult     = await chrome.storage.local.get(STORAGE_KEY.MANAGEMENT_OVERRIDE);
+  const managementOverride = overrideResult[STORAGE_KEY.MANAGEMENT_OVERRIDE] ?? false;
+  const ageVerifiedResult  = await chrome.storage.local.get(STORAGE_KEY.AGE_VERIFIED);
+  const ageVerified        = ageVerifiedResult[STORAGE_KEY.AGE_VERIFIED] ?? false;
+
+  if (managementOverride) body.appendChild(buildOverrideBanner());
+
+  // ── Classify this attendee's conditions ──
+  const reasons       = attendee.reasons ?? [];
+  const redReasons    = reasons.filter(r => r.isRed);
+  const yellowReasons = reasons.filter(r => !r.isRed && r.key !== "ageVerification");
+
+  // isBlocked: red reasons present AND no manager override available
+  const isBlocked = attendee.state === STATE.RED && !managementOverride;
+
+  // needsAgeStep: the age-verification gate hasn't been cleared yet,
+  // AND the registrant's ticket requires age verification,
+  // AND they aren't already blocked by a red condition (unless override)
+  const needsAgeStep = !ageVerified &&
+    reasons.some(r => r.key === "ageVerification") &&
+    (redReasons.length === 0 || managementOverride);
+  console.log("popup.js: needsAgeStep=", needsAgeStep, "ageVerified=", ageVerified, "reasons=", reasons.map(r => r.key));
+
+  // hasBlockingYellow: at least one required form field (e.g. ICE contact)
+  // is still empty. This is a "yellow" condition but it blocks check-in
+  // until resolved, so we treat it the same as red for visibility purposes.
+  const hasBlockingYellow = (attendee.missingRequiredFields?.length ?? 0) > 0;
+  const hasRed            = redReasons.length > 0;
+
+  // canIssueBadge: the single source of truth for showing the badge number
+  // AND enabling the Badge Delivered button. If you change this logic,
+  // both the badge cell render and the button state update automatically.
+  //
+  // Currently: badge visible only when we're not blocked, have no reds,
+  // and have no missing required fields.
+  const canIssueBadge = !isBlocked && !hasRed && !hasBlockingYellow;
+  console.log("popup.js: canIssueBadge=", canIssueBadge, "isBlocked=", isBlocked, "hasRed=", hasRed, "hasBlockingYellow=", hasBlockingYellow);
+
+
+  // ── AGE VERIFICATION STEP (blocks everything else when required) ──
+  // When a minor-age ticket hasn't been age-verified yet, replace the
+  // whole view with a compact "check their ID" screen. Once staff clicks
+  // the confirm button, the flag is stored and the view re-renders.
+  if (needsAgeStep) {
+    const nameSpan = el("span");
+    nameSpan.className = "legal-name-value";
+    nameSpan.textContent = attendee.legalName ?? "—";
+
+    const table = el("table");
+    table.style.cssText = "width:100%; margin-bottom:10px;";
+
+    const addAgeRow = (label, valueEl) => {
+      const tr  = el("tr");
+      const tdL = el("td", { className: "label" });
+      tdL.style.cssText = "font-size:14px; padding:6px 8px; white-space:nowrap; width:38%;";
+      tdL.textContent = label;
+      const tdR = el("td");
+      tdR.style.cssText = "padding:6px 8px; font-size:15px;";
+      if (typeof valueEl === "string") {
+        tdR.textContent = valueEl;
+      } else {
+        tdR.appendChild(valueEl);
+      }
+      tr.appendChild(tdL);
+      tr.appendChild(tdR);
+      table.appendChild(tr);
+    };
+
+    addAgeRow("Legal Name", nameSpan);
+
+    const today  = new Date();
+    const cutoff = new Date(today.getFullYear() - CONFIG.adultMinimumAge, today.getMonth(), today.getDate());
+    const dateSpan = el("span");
+    dateSpan.className = "age-cutoff-date";
+    dateSpan.textContent = `DOB on or before ${cutoff.toLocaleDateString()}`;
+    addAgeRow("ID Required", dateSpan);
+
+    body.appendChild(table);
+
+    const btn = el("button", { className: "btn-age-verify", textContent: "Age Verified, ID Returned ✓" });
+    btn.addEventListener("click", async () => {
+      await chrome.storage.local.set({ [STORAGE_KEY.AGE_VERIFIED]: true });
+      body.innerHTML = "";
+      await buildAttendeeView(attendee, tab);
+    });
+    body.appendChild(btn);
+    return;
+  }
+
+
+  // ── RED BANNER (only rendered when override is active) ──
+  // Without override, isBlocked=true and we'll short-circuit to the
+  // "Send to Help Desk" button below without showing these details.
+  if (redReasons.length > 0 && managementOverride) {
+    const banner = el("div", { className: "banner banner-red" });
+    banner.appendChild(el("div", { className: "banner-stop", textContent: "⛔ DO NOT ISSUE BADGE" }));
+    redReasons.forEach((r, i) => {
+      if (i > 0) banner.appendChild(el("hr", { className: "reason-divider" }));
+      const block = el("div", { className: "reason-block" });
+      const lines = r.text.split("\n");
+      block.appendChild(el("div", { className: "reason-title", textContent: lines[0] }));
+      if (lines.length > 1) block.appendChild(el("div", { className: "reason-body", textContent: lines.slice(1).join("\n") }));
+      banner.appendChild(block);
+    });
+    body.appendChild(banner);
+  }
+
+
+  // ── YELLOW WARNINGS BANNER ──
+  if (yellowReasons.length > 0) {
+    const banner = el("div", { className: "banner banner-yellow" });
+    yellowReasons.forEach((r, i) => {
+      if (i > 0) banner.appendChild(el("hr", { className: "reason-divider" }));
+      const block = el("div", { className: "reason-block" });
+      const lines = r.text.split("\n");
+      block.appendChild(el("div", { className: "reason-title", textContent: lines[0] }));
+      if (lines.length > 1) block.appendChild(el("div", { className: "reason-body", textContent: lines.slice(1).join("\n") }));
+      banner.appendChild(block);
+    });
+    body.appendChild(banner);
+  }
+
+
+  // ── BADGE NUMBER + TICKET TYPE CELL ──
+  // Only shown when the Badge Delivered button would be active
+  // (canIssueBadge). Otherwise render a neutral placeholder so the
+  // layout doesn't jump and staff know WHY the number is missing.
+  if (canIssueBadge) {
+    const badgeCell = el("div");
+    badgeCell.style.cssText = "text-align:center; padding:12px 6px 10px; border-bottom:2px solid #ccc; margin-bottom:10px;";
+    const badgeLabel = el("div", { className: "badge-number-label" });
+    badgeLabel.textContent = "BADGE NUMBER";
+    const badgeValue = el("div", { className: "badge-number-value" });
+    badgeValue.textContent = attendee.accountId ?? "—";
+    const ticketValue = el("div", { className: "badge-ticket-value" });
+    ticketValue.textContent = attendee.ticket ?? "—";
+    badgeCell.appendChild(badgeLabel);
+    badgeCell.appendChild(badgeValue);
+    badgeCell.appendChild(ticketValue);
+    body.appendChild(badgeCell);
+    console.log("popup.js: badge cell rendered (canIssueBadge=true)");
+  } else {
+    // Neutral placeholder — avoids a jarring layout gap and tells staff
+    // the badge info is intentionally withheld until issues clear.
+    const placeholder = el("div");
+    placeholder.style.cssText =
+      "text-align:center; padding:14px 8px; margin-bottom:10px; " +
+      "background:#f1f3f5; border:1px dashed #adb5bd; border-radius:4px; " +
+      "color:#495057; font-size:13px; font-style:italic;";
+    placeholder.textContent = "Badge info will appear once all issues are resolved.";
+    body.appendChild(placeholder);
+    console.log("popup.js: badge cell hidden (canIssueBadge=false) — placeholder shown");
+  }
+
+
+  // ── INFO TABLE (preferred name, legal name, age cutoff, active badges) ──
+  const table = el("table");
+  table.style.cssText = "width:100%; margin-bottom:10px;";
+
+  const addRow = (label, valueEl) => {
+    const tr  = el("tr");
+    const tdL = el("td", { className: "label" });
+    tdL.style.cssText = "font-size:14px; padding:6px 8px; white-space:nowrap; width:38%;";
+    tdL.textContent = label;
+    const tdR = el("td");
+    tdR.style.cssText = "padding:6px 8px; font-size:15px;";
+    if (typeof valueEl === "string") {
+      tdR.textContent = valueEl;
+    } else {
+      tdR.appendChild(valueEl);
+    }
+    tr.appendChild(tdL);
+    tr.appendChild(tdR);
+    table.appendChild(tr);
+  };
+
+  // Preferred name row — only shown when the attendee actually has a
+  // distinct preferred name. We deliberately do NOT fall back to the legal
+  // first name: showing "Preferred: Angela" next to "Legal Name: Angela
+  // Sample" is just visual noise. Case-insensitive comparison so "angela"
+  // vs "Angela" doesn't trip it.
+  if (!needsAgeStep) {
+    const preferred = (attendee.preferredName ?? "").trim();
+    const legalFirst = (attendee.legalName ?? "").split(" ")[0] ?? "";
+    if (preferred && preferred.toLowerCase() !== legalFirst.toLowerCase()) {
+      const prefSpan = el("span");
+      prefSpan.className = "legal-name-value";
+      prefSpan.textContent = preferred;
+      addRow("Preferred", prefSpan);
+    }
+  }
+
+  // Legal name row (always shown)
+  const nameSpan = el("span");
+  nameSpan.className = "legal-name-value";
+  nameSpan.textContent = attendee.legalName ?? "—";
+  addRow("Legal Name", nameSpan);
+
+  // Age cutoff row (only if an age-verification condition is active)
+  if (reasons.some(r => r.key === "ageVerification")) {
+    const today  = new Date();
+    const cutoff = new Date(today.getFullYear() - CONFIG.adultMinimumAge, today.getMonth(), today.getDate());
+    const dateSpan = el("span");
+    dateSpan.className = "age-cutoff-date";
+    dateSpan.textContent = `DOB on or before ${cutoff.toLocaleDateString()}`;
+    addRow("ID Required", dateSpan);
+  }
+
+  // Active badges row (only if "already issued" is flagged)
+  if (reasons.some(r => r.key === "alreadyIssued")) {
+    addRow("Badges", String(attendee.activeBadges ?? 0));
+  }
+
+  body.appendChild(table);
+
+
+  // ── BLOCKED (no override) ──
+  // Red reasons present but no override — short-circuit to a disabled
+  // "Send to Help Desk" button and stop rendering.
+  if (isBlocked && !managementOverride) {
+    body.appendChild(el("button", { className: "btn-no-issue", textContent: "NOT ALLOWED — SEND TO HELP DESK", disabled: true }));
+    body.appendChild(el("div", { className: "helpdesk-note", textContent: "Please send attendee to the Help Desk." }));
+    return;
+  }
+
+  // ── Re-check section ──────────────────────────────────────────────────────
+  // If any conditions are fixable on this page, show a single Re-check button
+  // plus a "Show me the field" button for ICE if that condition is present.
+  // ageVerification is "fixable" but once the volunteer has confirmed ID
+  // (ageVerified flag set in storage), it's effectively cleared — exclude it
+  // here so it doesn't block the Badge Delivered button.
+  const fixableReasons = reasons.filter(r =>
+    r.fixable && !(r.key === CONDITION.AGE_VERIFICATION && ageVerified)
+  );
+  if (fixableReasons.length > 0) {
+    const recheckSection = el("div", { className: "recheck-section" });
+    const recheckBlock   = el("div", { className: "recheck-block" });
+
+    // "Show me the field" button — only for the ICE condition
+    const hasIce = fixableReasons.some(r => r.key === CONDITION.MISSING_ICE);
+    if (hasIce) {
+      const showBtn = el("button", { className: "btn-show-field" });
+      showBtn.textContent = "Show me the field ↓";
+      showBtn.addEventListener("click", () => {
+        chrome.tabs.sendMessage(tab.id, { action: ACTION.HIGHLIGHT_ICE_FIELD });
+        window.close();
+      });
+      recheckBlock.appendChild(showBtn);
+    }
+
+    // Single shared Re-check button for all fixable conditions
+    const recheckBtn = el("button", { className: "btn-recheck" });
+    recheckBtn.textContent = "Re-check ↺";
+    recheckBtn.addEventListener("click", async () => {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tabs[0]) return;
+      await chrome.storage.local.set({ [STORAGE_KEY.ATTENDEE]: attendee });
+      chrome.tabs.sendMessage(tabs[0].id, { action: ACTION.GET_ATTENDEE_DATA }, async (freshData) => {
+        if (freshData) {
+          await chrome.storage.local.set({ [STORAGE_KEY.ATTENDEE]: freshData });
+          buildAttendeeView(freshData, tab);
+        }
+      });
+    });
+    recheckBlock.appendChild(recheckBtn);
+    recheckSection.appendChild(recheckBlock);
+    body.appendChild(recheckSection);
+  }
+
+  // ── Action buttons ──
+  const hasNoAccountId = reasons.some(r => r.key === CONDITION.NO_ACCOUNT_ID);
+  const hasActiveHold  = reasons.some(r =>
+    r.key === CONDITION.REG_HOLD ||
+    r.key === CONDITION.ART_HOLD ||
+    r.key === CONDITION.OPS_HOLD
+  );
+
+  if (hasNoAccountId) {
+    // Can't proceed at all — no button
+  } else if (needsAgeStep) {
+    const ageBtn = el("button", { className: "btn-age-verify" });
+    ageBtn.textContent = "Age Verified, ID Returned ✓";
+    ageBtn.addEventListener("click", async () => {
+      await chrome.storage.local.set({ [STORAGE_KEY.AGE_VERIFIED]: true });
+      buildAttendeeView(attendee, tab);
+    });
+    body.appendChild(ageBtn);
+  } else if (hasActiveHold) {
+    const noIssueBtn = el("button", { className: "btn-no-issue" });
+    noIssueBtn.textContent = "⛔ DO NOT ISSUE BADGE";
+    noIssueBtn.disabled = true;
+    body.appendChild(noIssueBtn);
+  } else if (fixableReasons.length === 0 || managementOverride) {
+    const btn = el("button", { className: "btn-checkin" });
+    btn.textContent = "Badge Delivered";
+    btn.addEventListener("click", () => completeCheckIn(attendee, tab, btn));
+    body.appendChild(btn);
+  }
+}
+
+// ── NOT FOUND / GUIDANCE VIEW ──────────────────────────────────────────────
+async function buildNotFoundView(heading, detail) {
+  const overrideResult = await chrome.storage.local.get(STORAGE_KEY.MANAGEMENT_OVERRIDE);
+  const managementOverride = overrideResult[STORAGE_KEY.MANAGEMENT_OVERRIDE] ?? false;
+  document.body.innerHTML = "";
+  if (managementOverride) document.body.appendChild(buildOverrideBanner());
+  document.body.appendChild(el("div", { className: "not-found-heading", textContent: heading }));
+  document.body.appendChild(el("div", { className: "not-found-detail",  textContent: detail  }));
+}
+
+// ── CHECK-IN COMPLETION ────────────────────────────────────────────────
+// Fires the CSV download, then messages the content script to write
+// all the fields to the Neon form and save it.
+
+async function completeCheckIn(attendee, tab, btn) {
+  console.log("popup.js: completeCheckIn starting for account", attendee.accountId);
+  btn.disabled    = true;
+  btn.textContent = "Processing…";
+
+  // Step 1 — Save the badge printer CSV
+  const csvResult = await saveBadgeCSV(attendee);
+  if (!csvResult.ok) {
+    showError(`Badge CSV download failed: ${csvResult.error}\n\nDo NOT issue badge. Please contact Registration Head.`);
+    return;
+  }
+
+  // Step 2 — Find the active Neon tab to send the increment message to
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true, status: "complete" });
+  if (!tabs[0]) {
+    showError("Could not find the active Neon tab. Please try again.");
+    return;
+  }
+
+  // Step 3 — Ask content script to increment badge count and save
+  chrome.tabs.sendMessage(tabs[0].id, { action: ACTION.INCREMENT_BADGE_COUNT }, (response) => {
+    if (chrome.runtime.lastError) {
+      showError(`Check-in could not be completed: ${chrome.runtime.lastError.message}\n\nDo NOT hand out the badge. Please contact Registration Head.`);
+      return;
+    }
+    if (!response?.ok) {
+      showError(`Check-in could not be completed: ${response?.error ?? "Unknown error"}\n\nDo NOT hand out the badge. Please contact Registration Head.`);
+      return;
+    }
+    // Success — clear the age-verified flag so the next attendee starts fresh
+    chrome.storage.local.remove([STORAGE_KEY.AGE_VERIFIED]);
+    showConfirmation(attendee);
+  });
+}
+
+function showConfirmation(attendee) {
+  const body = document.body;
+  body.innerHTML = "";
+  const screen = el("div", { className: "confirm-screen" });
+  screen.appendChild(el("div", { className: "confirm-icon",   textContent: "✓" }));
+  screen.appendChild(el("div", { className: "confirm-title",  textContent: "Check-In Complete" }));
+  screen.appendChild(el("div", { className: "confirm-name",   textContent: attendee.preferredName || attendee.legalName }));
+  screen.appendChild(el("div", { className: "confirm-badge",  textContent: `Badge: ${attendee.attendeeId}` }));
+  screen.appendChild(el("div", { className: "confirm-detail", textContent: "Hand badge to attendee.\nCSV sent to printer queue." }));
+  body.appendChild(screen);
+  setTimeout(() => window.close(), 3000);
+}
+
+function showError(message) {
+  const body = document.body;
+  body.innerHTML = "";
+  const screen = el("div", { className: "error-screen" });
+  screen.appendChild(el("div", { className: "error-icon",    textContent: "✗" }));
+  screen.appendChild(el("div", { className: "error-message", textContent: message }));
+  body.appendChild(screen);
+}
+
+
+// ── CSV DOWNLOAD ───────────────────────────────────────────────────────
+// Writes the badge printer CSV file (one row per badge, downloaded
+// to the user's Downloads folder where the printer queue watches).
+
+// ── CSV DOWNLOAD ───────────────────────────────────────────────────────────
+async function saveBadgeCSV(attendee) {
+  try {
+    const headers = ["Badge Type", "Badge Image", "Account ID", "Print Number"];
+    const values  = [attendee.ticket, attendee.badgeImage, attendee.accountId, attendee.activeBadges + 1];
+    const csvRow  = v => `"${String(v).replace(/"/g, '""')}"`;
+    const csv     = [headers.map(csvRow).join(","), values.map(csvRow).join(",")].join("\n");
+    const blob     = new Blob([csv], { type: "text/csv" });
+    const filename = `${attendee.accountId} - ${(attendee.preferredName || attendee.legalName).replace(/[^\w\s]/g, "")}.csv`;
+    const link     = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: filename });
+    link.click();
+    URL.revokeObjectURL(link.href);
+    console.log("popup.js: saveBadgeCSV wrote", filename);
+    return { ok: true };
+  } catch (err) {
+    console.error("saveBadgeCSV failed:", err);
+    return { ok: false, error: err.message };
+  }
+}
+
+
+// ── NOT FOUND VIEW ─────────────────────────────────────────────────────
+
+function buildNotFoundView(heading, detail) {
+  document.body.innerHTML = "";
+  document.body.appendChild(el("div", { className: "not-found-heading", textContent: heading }));
+  document.body.appendChild(el("div", { className: "not-found-detail",  textContent: detail  }));
+}
+
+
+// ── UTILITIES ──────────────────────────────────────────────────────────
+
+// ── UTILITIES ──────────────────────────────────────────────────────────────
+async function getActiveTab() {
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  return tabs?.[0];
+}
+
+function el(tag, props = {}) {
+  return Object.assign(document.createElement(tag), props);
+}
+
+// end js/popup.js

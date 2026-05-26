@@ -1,0 +1,191 @@
+# CONvergence Check-In Extension — Developer Guide
+
+This document is for IT volunteers who maintain, debug, or update the
+extension code. It assumes basic familiarity with JavaScript and Chrome
+extensions.
+
+---
+
+## Architecture Overview
+
+The extension is built to Manifest V3 (MV3) standards using ES modules.
+jQuery has been removed — all DOM access uses native browser APIs.
+
+### How the pieces connectUser navigates to Neon page
+↓
+background.js (service worker) detects the URL via webNavigation listener
+↓
+Sends message to content script (attendeeContact.js or registrations.js)
+↓
+Content script scrapes the page and returns a state object
+↓
+background.js stores the state in chrome.storage.local
+and sets the toolbar icon color (green / yellow / red)
+↓
+User clicks the toolbar icon → popup.html loads → popup.js reads storage
+↓
+popup.js renders the appropriate view (attendee view or registrations view)
+↓
+User clicks "Complete Check-In" in popup
+↓
+popup.js downloads badge CSV, then sends "Increment Badge Count" message
+↓
+attendeeContact.js writes fields to Neon form and clicks the save button
+
+### Content script injection
+
+Content scripts are injected by the manifest based on URL patterns. They
+are plain (non-module) scripts. The manifest lists `config.js` and
+`js/constants.js` ahead of every content script so that `CONFIG`, `STATE`,
+`ACTION`, `STORAGE_KEY`, `CONDITION`, `EVENT_MATCH`, `REG_STATUS`,
+`ERROR_MESSAGES`, and the `dbg()` helper are available as globals. Do
+not add `import` / `export` statements.
+
+| URL pattern | Script injected |
+|---|---|
+| `.../admin/accounts/*` | `js/accountPage.js` |
+| `.../attendeeEdit.do*` | `js/attendeeContact.js` |
+| `.../contactSelect.do*` | `js/attendeeContact.js` |
+| `.../eventRegDetails.do*` | `js/registrations.js` |
+
+---
+
+## File Responsibilities
+
+| File | Purpose |
+|---|---|
+| `config.js` | All annual configuration — event IDs, field indexes, ticket rules |
+| `js/constants.js` | Shared string constants (states, action names, storage keys) |
+| `js/background.js` | Service worker — page load listeners and icon updates |
+| `js/attendeeContact.js` | Scrapes AttendeeEdit page, validates, writes check-in data |
+| `js/registrations.js` | Scrapes EventRegDetails page, validates registrants |
+| `js/popup.js` | Popup UI — renders views, handles check-in action |
+| `js/options.js` | Options page — saves workstation ID and override state |
+
+---
+
+## The Attendee State Object
+
+`attendeeContact.js` builds and returns this object. `popup.js` consumes it.
+If you change the shape of this object, update both files.
+```javascript{
+accountId:             string,   // Neon account ID (from URL param)
+attendeeId:            string,   // Badge prefix + attendee ID (e.g. "A81463")
+name:                  string,   // First + last name from form
+badgeName:             string,   // Badge Name field, falls back to name
+badgeImage:            string,   // .tif filename for badge printer
+ticket:                string,   // e.g. "Adult Weekend", "Teen Day Pass"
+activeBadges:          number,   // Current value of Active Badge Count field
+regStatus:             string,   // e.g. "SUCCEEDED"
+state:                 string,   // "green" | "yellow" | "red"
+reason:                string,   // Staff-facing message
+missingRequiredFields: string[], // Labels of any empty required fields
+}
+
+---
+
+## Neon Custom Field Indexes (verified 2025)
+
+All custom fields on the AttendeeEdit page use the pattern:
+`name="attendee.customDataList[N].value"`
+
+| Index | Field | Type |
+|---|---|---|
+| 0 | Registration Hold - Do Not Release | checkbox |
+| 1 | Art Show Hold - Do Not Release | checkbox |
+| 2 | Operations Hold - Do Not Release | checkbox |
+| 3 | Unknown — not used | — |
+| 4 | In Case Of Emergency (Name and Phone) | text |
+| 5 | Badge Name | text |
+| 6–9 | Unknown — not used | — |
+| 10 | Non-Transferable First and Last Name | text |
+| 11 | Number of Active Badges | text |
+| 12 | Pickup Date 1 | text |
+| 13 | Pickup Time 1 | text |
+| 14 | Pickup Date 2 | text |
+| 15 | Pickup Time 2 | text |
+| 16 | Pickup Date 3 | text |
+| 17 | Pickup Time 3 | text |
+| 18 | Pickup Date 4 | text |
+| 19 | Pickup Time 4 | text |
+
+### If field indexes change
+
+If the extension stops reading or writing fields correctly after a Neon
+update, the indexes may have changed. To map the new ones:
+
+1. Open the Neon AttendeeEdit page in Chrome and open DevTools → Console.
+2. Run `Array.from(document.querySelectorAll('[name^="attendee.customDataList"]')).map((el, i) => ({ index: i, name: el.name, label: el.closest('tr')?.querySelector('td:first-child')?.innerText?.trim() }))`.
+3. Match the labels you see against the table above and update
+   `config.js` → `fieldIndexes` with the new values.
+
+---
+
+## Password Hashing
+
+The management override password is stored as a SHA-256 hex hash in
+`config.js`. The hash is generated by `tools/generate-password-hash.html`.
+
+The hashing is done in `js/options.js` using the browser's built-in
+`crypto.subtle.digest("SHA-256", ...)` — no external libraries.
+
+**Do not commit `tools/generate-password-hash.html` to GitHub.** It is
+listed in `.gitignore`. If it appears in a commit, remove it.
+
+---
+
+## Common Debugging Steps
+
+### Extension not activating on a page
+1. Check `chrome://extensions` for errors
+2. Verify the URL matches a pattern in `manifest.json` `content_scripts`
+3. Open DevTools on the Neon page → Console tab — look for errors from
+   `attendeeContact.js` or `registrations.js`
+
+### Popup shows stale or wrong data
+Data is cached in `chrome.storage.local`. The cache is updated each time
+a matching page finishes loading (via `background.js`).
+- Refreshing the Neon page forces a re-scrape
+- You can inspect storage at `chrome://extensions` → Details → Inspect views: service worker → Application → Storage → Local Storage
+
+### Field writes not working
+1. Verify the field index in `config.js` matches the live page
+2. Re-map indexes using the DevTools snippet under "If field indexes change"
+3. Check the console for errors from `incrementBadge()` in `attendeeContact.js`
+
+### Adding a new required field
+1. Find the field's `customDataList` index using the DevTools snippet
+   under "If field indexes change"
+2. Add an entry to `config.js` → `requiredFields`
+3. Add a corresponding highlight case to `highlightICEField()` in
+   `attendeeContact.js` if you want the "Show me the field" button to work
+
+### Adding a new hold type
+1. Find the field's `customDataList` index using the same DevTools snippet
+2. Add the index to `config.js` → `fieldIndexes` (name it clearly)
+3. Add the staff-facing message to `config.js` → `holdMessages`
+   (order must match the hold indexes array in `attendeeContact.js`)
+
+---
+
+## Annual Release Checklist
+
+- [ ] Update `event.currentEventId` in `config.js`
+- [ ] Regenerate management password hash and update `config.js`
+- [ ] Confirm `adultMinimumAge` is still correct
+- [ ] Confirm ticket type `nameIncludes` values match current Neon ticket names
+- [ ] Confirm `fieldIndexes` still match live Neon form (spot-check with diagnostic)
+- [ ] Update `version` in `manifest.json` to current year
+- [ ] Test on the training event (ID 142) before con weekend
+- [ ] Brief incoming Registration IT volunteer on this document
+
+---
+
+## Tools
+
+### `tools/generate-password-hash.html`
+Open locally in Chrome. Generates a SHA-256 hash of a password for use
+in `config.js`. This file is gitignored (`.gitignore` line 6) — it lives
+on individual maintainers' machines and must not be committed. If you
+don't have a copy, regenerate the hash with this one-liner in DevTools:
+`crypto.subtle.digest("SHA-256", new TextEncoder().encode("yourPassword")).then(b => console.log(Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2,"0")).join("")))`.

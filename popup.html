@@ -1,34 +1,23 @@
+<!-- popup.html
+     ---------------------------------------------------------------
+     Extension popup window for the CONvergence Check-In extension.
+     All styles live in css/popup.css — do not add <style> blocks here.
+     Scripts are loaded in dependency order:
+       1. config.js           — annual settings (event IDs, field labels)
+       2. js/constants.js     — shared string constants (STATE, ACTION, etc.)
+       4. js/popup.js         — UI logic, last so globals are available
+     --------------------------------------------------------------- -->
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>CONvergence Badge Validation and Printing Popup</title>
-    <style>
-        body {
-            min-width: 357px;
-            overflow-x: hidden;
-        }
-
-        img {
-            margin: 5px;
-            border: 2px solid black;
-            vertical-align: middle;
-            width: 75px;
-            height: 75px;
-        }
-
-        tr {
-            font-size: 18px;
-        }
-    </style>
-    <!--
-      - JavaScript and HTML must be in separate files: see the Content Security
-      - Policy documentation[1] for details and explanation.
-      -
-      - [1]: http://developer.chrome.com/extensions/contentSecurityPolicy.html
-     -->
-
-    <script src="js/popup2.js"></script>
+  <meta charset="UTF-8">
+  <title>CONvergence Check-In</title>
+  <link rel="stylesheet" href="css/popup.css">
 </head>
 <body>
+  <script src="config.js"></script>
+  <script src="js/constants.js"></script>
+  <script src="js/popup.js"></script>
 </body>
 </html>
+<!-- end popup.html -->

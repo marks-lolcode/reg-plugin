@@ -1,0 +1,224 @@
+# =============================================================================
+# CONvergence Check-In — test fixtures
+# =============================================================================
+#
+# Each entry below describes a test attendee on the production TRAINING EVENT
+# (event name: "CONvergence Example For Training Only", listed in
+# CONFIG.event.testEventNames in config.js).
+#
+# To activate a fixture:
+#   1. Set up the attendee in Neon per the "Setup" comment above the entry.
+#   2. Open the AttendeeEdit page for that attendee and copy these values out
+#      of the URL — `id=...&accountId=...`:
+#        - attendeeId is the value of `id`     (e.g. "A12345" or "12345")
+#        - accountId  is the value of `accountId`
+#      For eventRegDetails fixtures, copy the value of `id` into registrationId.
+#   3. Paste into the empty quoted strings below.
+#   4. Re-run `npx playwright test`. Fixtures with empty IDs are skipped, so
+#      you can fill in a few at a time.
+#
+# Each `expect.conditions` array must contain the exact CONDITION.* string
+# values from js/constants.js (e.g. "regHold", "artHold", "missingIce").
+#
+# All entries below sit on the training event. Tests will mutate these
+# attendees during the check-in spec — pick records that are safe to mutate.
+# =============================================================================
+
+# ── GREEN: clean check-in candidate ──────────────────────────────────────────
+- name: green-adult-clean
+  # Setup: Adult Weekend ticket; all three holds OFF; ICE filled in; badge not
+  # yet issued (active badge count = 0, no pickup date/time); DOB on file so
+  # age check passes. The check-in spec will increment this attendee's badge
+  # count, so pick a fixture you don't mind mutating.
+  page: attendeeEdit
+  accountId: ""
+  attendeeId: ""
+  expect:
+    state: green
+    ticket: Adult
+    conditions: []
+
+# ── RED: registration hold ───────────────────────────────────────────────────
+- name: red-reg-hold
+  # Setup: same as green-adult-clean, but toggle "Registration Hold - Do Not
+  # Release" = true. Leave Art Show and Operations holds OFF.
+  page: attendeeEdit
+  accountId: ""
+  attendeeId: ""
+  expect:
+    state: red
+    conditions: [regHold]
+
+# ── RED: art show hold ───────────────────────────────────────────────────────
+- name: red-art-hold
+  # Setup: toggle "Art Show Hold - Do Not Release" = true. Other holds OFF.
+  page: attendeeEdit
+  accountId: ""
+  attendeeId: ""
+  expect:
+    state: red
+    conditions: [artHold]
+
+# ── RED: operations hold ─────────────────────────────────────────────────────
+- name: red-ops-hold
+  # Setup: toggle "Operations Hold - Do Not Release" = true. Other holds OFF.
+  page: attendeeEdit
+  accountId: ""
+  attendeeId: ""
+  expect:
+    state: red
+    conditions: [opsHold]
+
+# ── RED: not paid ────────────────────────────────────────────────────────────
+- name: red-not-paid
+  # Setup: registration status anything other than SUCCEEDED (e.g. PENDING,
+  # FAILED, REFUNDED). Easiest: register a new attendee but skip payment.
+  page: attendeeEdit
+  accountId: ""
+  attendeeId: ""
+  expect:
+    state: red
+    conditions: [notPaid]
+
+# ── RED: badge already issued ────────────────────────────────────────────────
+- name: red-already-issued
+  # Setup: set "Number of Active Badges" = 1 (or more), with a pickup date
+  # and time in any pickup slot. ICE filled, holds off, status SUCCEEDED.
+  page: attendeeEdit
+  accountId: ""
+  attendeeId: ""
+  expect:
+    state: red
+    conditions: [alreadyIssued]
+
+# ── RED: wrong year ──────────────────────────────────────────────────────────
+- name: red-wrong-year
+  # Setup: an attendee on a DIFFERENT event (not training event 142 and not
+  # in CONFIG.event.currentEventNames). Past-year CONvergence works well.
+  page: attendeeEdit
+  accountId: ""
+  attendeeId: ""
+  expect:
+    state: red
+    conditions: [wrongYear]
+
+# ── RED: wrong event ─────────────────────────────────────────────────────────
+- name: red-wrong-event
+  # Setup: attendee on an event whose name does not appear in either
+  # currentEventNames or testEventNames in config.js. A one-off Neon event
+  # works (e.g. an unrelated event you can create just for this fixture).
+  page: attendeeEdit
+  accountId: ""
+  attendeeId: ""
+  expect:
+    state: red
+    conditions: [wrongEvent]
+
+# ── RED: incorrect day (Day Pass) ────────────────────────────────────────────
+- name: red-incorrect-day
+  # Setup: a Day Pass ticket (e.g. "Adult Thursday Day Pass") where today's
+  # weekday does not match the day in the ticket name. Easiest is a
+  # Saturday Day Pass tested any day other than Saturday.
+  page: attendeeEdit
+  accountId: ""
+  attendeeId: ""
+  expect:
+    state: red
+    conditions: [incorrectDay]
+
+# ── RED: unknown ticket type ─────────────────────────────────────────────────
+- name: red-unknown-ticket
+  # Setup: a ticket whose name does NOT include any of: Adult, Teen, Youth,
+  # Child. Create a one-off ticket type in the training event named e.g.
+  # "Mystery Pass" and assign it.
+  page: attendeeEdit
+  accountId: ""
+  attendeeId: ""
+  expect:
+    state: red
+    conditions: [unknownTicket]
+
+# ── RED: no account ID on URL ────────────────────────────────────────────────
+- name: red-no-account-id
+  # Setup: hit an attendeeEdit URL without the accountId param. Just remove
+  # `&accountId=...` from a working URL and paste the rest into attendeeId
+  # below. Leave accountId empty.
+  #
+  # NOTE: This test bypasses the normal fixture URL builder (which requires
+  # accountId). The attendee spec skips entries with empty accountId, so this
+  # fixture is exercised by a dedicated test in attendee.spec.ts instead.
+  page: attendeeEdit
+  accountId: "SKIP"
+  attendeeId: ""
+  expect:
+    state: red
+    conditions: [noAccountId]
+
+# ── RED: no attendee ID ──────────────────────────────────────────────────────
+- name: red-no-attendee-id
+  # Setup: a registration where the attendee was deleted or never created,
+  # so the URL has accountId but no resolvable attendeeId. Rare. Skip if you
+  # cannot reproduce — leave accountId/attendeeId blank.
+  page: attendeeEdit
+  accountId: ""
+  attendeeId: ""
+  expect:
+    state: red
+    conditions: [noAttendeeId]
+
+# ── RED: no name on form ─────────────────────────────────────────────────────
+- name: red-no-name
+  # Setup: clear the First Name AND Last Name fields on a test attendee.
+  # Other fields can be normal.
+  page: attendeeEdit
+  accountId: ""
+  attendeeId: ""
+  expect:
+    state: red
+    conditions: [noName]
+
+# ── RED: non-transferable name mismatch ──────────────────────────────────────
+- name: red-name-mismatch
+  # Setup: badge issued previously (active badge count = 1) AND the
+  # "Non-Transferable First and Last Name" field is filled in with a name
+  # different from the current account holder's name. Other holds OFF.
+  page: attendeeEdit
+  accountId: ""
+  attendeeId: ""
+  expect:
+    state: red
+    conditions: [nameMismatch]
+
+# ── YELLOW: age verification (Adult/Teen) ────────────────────────────────────
+- name: yellow-age-verification
+  # Setup: Adult ticket with NO DOB on file, OR a Teen ticket (always
+  # triggers age-verification reminder). Holds off, ICE filled, status
+  # SUCCEEDED, badge not yet issued.
+  page: attendeeEdit
+  accountId: ""
+  attendeeId: ""
+  expect:
+    state: yellow
+    conditions: [ageVerification]
+
+# ── YELLOW: missing ICE (emergency contact) ──────────────────────────────────
+- name: yellow-missing-ice
+  # Setup: clear the "In Case Of Emergency (Name and Phone)" field. All
+  # other validations should pass (no holds, paid, not issued, name match).
+  page: attendeeEdit
+  accountId: ""
+  attendeeId: ""
+  expect:
+    state: yellow
+    conditions: [missingIce]
+
+# ── REGISTRATIONS PAGE: multi-attendee account ───────────────────────────────
+- name: registrations-multi
+  # Setup: an account on the training event with 2+ attendees in mixed
+  # states (e.g. one green Adult and one yellow Teen). Open the
+  # eventRegDetails.do page for the registration and copy the `id` param.
+  page: eventRegDetails
+  registrationId: ""
+  expect:
+    rowCount: 2
+    states: [green, yellow]
