@@ -1,26 +1,16 @@
 // js/options.js
-
+//
 // Extension options page script.
-// Saves management override state to chrome.storage.local.
-// Password verification uses SHA-256 hash comparison — the real password
+// Persists two settings to chrome.storage.local:
+//   - STORAGE_KEY.EXTENSION_MODE   ("reg" | "merch")  -- drives which popup flow runs
+//   - STORAGE_KEY.MANAGEMENT_OVERRIDE (boolean)        -- password-gated bypass
+//
+// Password verification uses SHA-256 hash comparison -- the real password
 // is never stored in code or in chrome.storage.
 //
-// CONFIG and STORAGE_KEY are globals injected via extension_options_page.html
-// script tags before this file loads.
-
-/**
- * Hashes a plaintext password using SHA-256 via the browser's built-in
- * Web Crypto API. No external libraries required.
- * @param {string} password
- * @returns {Promise<string>} Hex-encoded SHA-256 hash
- */
-async function hashPassword(password) {
-  const data       = new TextEncoder().encode(password);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hashBuffer))
-    .map(b => b.toString(16).padStart(2, "0"))
-    .join("");
-}
+// CONFIG, STORAGE_KEY, EXTENSION_MODE are globals injected via
+// extension_options_page.html script tags before this file loads.
+// hashPassword() comes from shared/js/crypto.js, also loaded before this file.
 
 /**
  * Reads form values, validates the management password if override is
@@ -29,6 +19,8 @@ async function hashPassword(password) {
  */
 async function saveOptions() {
   const mngtOverride = document.getElementById("mngtoverride").checked;
+  const mode         = document.querySelector('input[name="ext-mode"]:checked')?.value
+                       ?? EXTENSION_MODE.REG;
   const statusEl     = document.getElementById("status");
 
   if (mngtOverride) {
@@ -36,7 +28,7 @@ async function saveOptions() {
     const enteredHash = await hashPassword(entered);
     if (enteredHash !== CONFIG.managementPasswordHash) {
       statusEl.className   = "error";
-      statusEl.textContent = "Incorrect password — options not saved.";
+      statusEl.textContent = "Incorrect password -- options not saved.";
       setTimeout(() => { statusEl.textContent = ""; statusEl.className = ""; }, 2000);
       return;
     }
@@ -44,6 +36,7 @@ async function saveOptions() {
 
   await chrome.storage.local.set({
     [STORAGE_KEY.MANAGEMENT_OVERRIDE]: mngtOverride,
+    [STORAGE_KEY.EXTENSION_MODE]:      mode,
   });
 
   statusEl.className   = "";
@@ -61,9 +54,18 @@ async function saveOptions() {
  */
 function restoreOptions() {
   chrome.storage.local.get(
-    { [STORAGE_KEY.MANAGEMENT_OVERRIDE]: false },
+    {
+      [STORAGE_KEY.MANAGEMENT_OVERRIDE]: false,
+      [STORAGE_KEY.EXTENSION_MODE]:      EXTENSION_MODE.REG,
+    },
     (items) => {
       document.getElementById("mngtoverride").checked = items[STORAGE_KEY.MANAGEMENT_OVERRIDE];
+
+      const mode  = items[STORAGE_KEY.EXTENSION_MODE];
+      const radio = document.querySelector(`input[name="ext-mode"][value="${mode}"]`)
+                 ?? document.getElementById("mode-reg");
+      radio.checked = true;
+
       togglePasswordField();
     }
   );

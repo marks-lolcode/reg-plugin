@@ -46,13 +46,20 @@ When a volunteer confirms check-in, the extension automatically:
 ├── assets/                          ← Extension icons
 ├── _locales/en/                     ← Localisation strings
 ├── installation/                    ← Page shown on first install
+├── shared/js/                       ← Framework-level helpers (icon cache, hashing, base constants)
+│   ├── constants-base.js            ← STATE, base STORAGE_KEY, ERROR_MESSAGES, dbg
+│   ├── background-core.js           ← Icon caching + setIcon (service worker uses)
+│   └── crypto.js                    ← SHA-256 hashPassword for the options page
 ├── js/
-│   ├── constants.js                 ← Shared string constants
+│   ├── constants.js                 ← App-specific constants (extends STORAGE_KEY)
 │   ├── background.js                ← Service worker (page load listeners)
-│   ├── popup.js                     ← Popup UI logic
-│   ├── options.js                   ← Options page logic
-│   ├── attendeeContact.js           ← AttendeeEdit page logic (main check-in)
-│   └── registrations.js             ← EventRegDetails page logic
+│   ├── popup.js                     ← Reg-mode popup UI + mode dispatcher
+│   ├── popup-merch.js               ← Merch-mode popup UI (Merchandise pickup)
+│   ├── options.js                   ← Options page logic (mode toggle + override)
+│   ├── accountPage.js               ← Account page auto-nav
+│   ├── attendeeContact.js           ← AttendeeEdit page logic (REG mode)
+│   ├── merch-attendee.js            ← AttendeeEdit page logic (MERCH mode)
+│   └── registrations.js             ← EventRegDetails page logic (both modes)
 └── tools/
 ├── generate-password-hash.html  ← Run locally to hash the annual password
 └── find-field-indexes.html      ← Run locally if Neon fields stop working

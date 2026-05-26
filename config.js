@@ -194,4 +194,60 @@ const CONFIG = {
     { key: "missingIce",      fixableOnAttendeePage: true  },
   ],
 
+
+  // ── MERCHANDISE PICKUP TRACKING ──────────────────────────────────────
+  // Used by Merch mode (toggle on the options page). Each item describes:
+  //   name              -- display name in the popup (e.g., "T-Shirt")
+  //   source.type       -- "customField" or "session"
+  //   source.label      -- (customField) substring of the custom field
+  //                        label on the attendee form that signals the
+  //                        attendee has this item. Item counts as
+  //                        "included" if the field is non-empty.
+  //   source.sessionName-- (session) substring of the Neon session name
+  //                        the attendee must be registered for to qualify.
+  //   pickupFieldLabel  -- substring of the Neon attendee form field
+  //                        where this item's pickup date/time gets
+  //                        written. Empty = not yet picked up. Non-empty
+  //                        = already picked up (popup greys + locks the
+  //                        checkbox and shows the recorded date/time).
+  //
+  // These fields don't exist in Neon yet -- update the substrings here
+  // when the fields are created. The extension matches by label substring
+  // exactly like CONFIG.fieldLabels does.
+  //
+  // UPDATE EACH YEAR: merch.items must match the Neon field labels and
+  // not-ordered/ordered values configured on the registration form.
+  merch: {
+    items: [
+      // T-Shirt -- single dropdown field with the size as the value.
+      // matchMode "anyExcept" means: ordered if value is anything other
+      // than notOrderedValue. When ordered, the field value IS the size
+      // variant (e.g., "Unisex L", "Fitted S", "Kids XL") -- shown in popup.
+      {
+        name: "T-Shirt",
+        source: {
+          type: "customField",
+          label: "Preorder your 2026 T-shirt",
+          matchMode: "anyExcept",
+          notOrderedValue: "Check the box then click to pick your shirt style and size",
+        },
+        pickupFieldLabel: "T-Shirt Picked Up",
+      },
+      // Souvenir Guide -- radio field with a yes/no-style choice.
+      // matchMode "substring" means: ordered if the selected value
+      // contains matchValue. Using a substring avoids dash-character
+      // fragility (en-dash vs hyphen in the full label text).
+      {
+        name: "Souvenir Guide",
+        source: {
+          type: "customField",
+          label: "Pre-order Souvenir Guide",
+          matchMode: "substring",
+          matchValue: "Reserve a free printed Guide",
+        },
+        pickupFieldLabel: "Guide Picked Up",
+      },
+    ],
+  },
+
 }; // end config.js

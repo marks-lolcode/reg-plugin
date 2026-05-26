@@ -39,6 +39,18 @@
 // ── TRIGGER ICON UPDATE ON PAGE LOAD ──────────────────────────────────────
 
 (async function triggerIconUpdate() {
+  // In MERCH mode, js/merch-attendee.js owns the page scrape and storage
+  // writes for the attendee edit form. Bail early so we don't clobber its
+  // STORAGE_KEY.ATTENDEE_MERCH write or fire a reg-flavored PENDING_ICON_UPDATE.
+  // buildFieldIndex() and the message listener below remain defined so
+  // merch-attendee.js (loaded after this file) can call buildFieldIndex as
+  // a shared content-script global.
+  const modeResult = await chrome.storage.local.get({ [STORAGE_KEY.EXTENSION_MODE]: EXTENSION_MODE.REG });
+  if (modeResult[STORAGE_KEY.EXTENSION_MODE] !== EXTENSION_MODE.REG) {
+    console.log("attendeeContact.js: not REG mode, skipping reg scrape");
+    return;
+  }
+
   const data = await getAttendeeInfo();
   await chrome.storage.local.set({ [STORAGE_KEY.ATTENDEE]: data });
   await chrome.storage.local.set({ [STORAGE_KEY.PENDING_ICON_UPDATE]: { page: "attendee", ts: Date.now() } });
@@ -94,11 +106,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
  * pages this will not be found; getAttendeeInfo() falls back to "Badge: First
  * Name" in that case.
  */
-function buildFieldIndex() {
-  const labels = CONFIG.fieldLabels;
-  const index  = {};
-
-  // ── Build index → label map by reading each input's parent label ──
+/**
+ * Walks every customDataList input on the page and returns a map of
+ * { customDataListIndex -> displayed label text } using the same 5-strategy
+ * label lookup the reg flow has relied on for the standard + dealer layouts.
+ *
+ * Lives at module scope so other content scripts loaded into the same world
+ * (e.g. js/merch-attendee.js, which loads after this file in the manifest)
+ * can call it without duplicating the lookup logic.
+ */
+function buildCustomFieldLabelMap() {
   const labelByIndex = {};
 
   const customInputs = document.querySelectorAll("[name^='attendee.customDataList[']");
@@ -166,6 +183,15 @@ function buildFieldIndex() {
   });
 
   console.log("attendeeContact.js: field label map:", labelByIndex);
+  return labelByIndex;
+}
+
+function buildFieldIndex() {
+  const labels = CONFIG.fieldLabels;
+  const index  = {};
+
+  // ── Build index → label map by reading each input's parent label ──
+  const labelByIndex = buildCustomFieldLabelMap();
 
   // ── Match holds by parent label text (NOT by position) ──
   // The parent .form-group label clearly identifies which hold is which,

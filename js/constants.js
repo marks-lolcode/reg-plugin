@@ -1,22 +1,27 @@
 // js/constants.js
-
-// ============================================================================
-// Shared constants used across all extension scripts.
-// Single source of truth for strings that appear in multiple files.
 //
-// NOTE: This file is injected as a plain script (not an ES module).
-// Do not add import/export statements.
 // ============================================================================
-
-// ── PAGE / ICON STATES ───────────────────────────────────────────────────
-// These map directly to the colored icons (green/yellow/red) and to the
-// CSS classes used in popup.css. Do not rename without updating both.
-
-const STATE = {
-  GREEN:  "green",
-  YELLOW: "yellow",
-  RED:    "red",
-};
+// App-specific constants for the CONvergence Check-In extension.
+// ============================================================================
+//
+// Framework-level constants (STATE, ERROR_MESSAGES, the icon-machinery
+// STORAGE_KEY entries, dbg()) live in shared/js/constants-base.js, which
+// is loaded BEFORE this file in every entry point (manifest content_scripts,
+// popup.html script tags, extension_options_page.html script tags, and
+// background.js importScripts).
+//
+// This file:
+//   - Mutates STORAGE_KEY to add app-specific keys (does NOT redeclare it)
+//   - Declares REG_STATUS, ACTION, CONDITION, EVENT_MATCH (all app-specific)
+//
+// If you need to add a new error template that's specific to this
+// extension, mutate ERROR_MESSAGES here:
+//     ERROR_MESSAGES.MY_NEW_ERROR = { title: "...", detail: "...", action: "..." };
+// Otherwise, generic templates belong in shared/js/constants-base.js so
+// any future Neon helper extension can reuse them.
+//
+// Do not add import/export statements -- this file is injected as a global.
+// ============================================================================
 
 // ── REGISTRATION STATUS VALUES ───────────────────────────────────────────
 // Neon reports registration status as uppercase strings. We only care
@@ -30,7 +35,7 @@ const REG_STATUS = {
 // ── MESSAGE ACTION NAMES ─────────────────────────────────────────────────
 // Used as the `action` field in chrome.runtime.sendMessage / tabs.sendMessage
 // calls between popup, background, and content scripts. Every cross-script
-// message MUST use one of these constants — never raw strings.
+// message MUST use one of these constants -- never raw strings.
 
 const ACTION = {
   GET_ATTENDEE_DATA:          "Get Attendee Data",
@@ -41,36 +46,40 @@ const ACTION = {
   NAVIGATE_TO_EVENT_REG:      "Navigate To Event Reg",
   // Sent by attendeeContact.js right before submitting the check-in form.
   // background.js arms a one-shot redirect that fires when the resulting
-  // eventRegDetails navigation commits — forcing the volunteer back to the
+  // eventRegDetails navigation commits -- forcing the volunteer back to the
   // account search so the next check-in starts from a fresh lookup.
   ARM_POST_CHECKIN_REDIRECT:  "Arm Post Check-In Redirect",
+  // Sent by popup-merch.js when the volunteer confirms which items the
+  // attendee is collecting now. merch-attendee.js writes current date/time
+  // into each item's pickup field, then submits the form (same submit +
+  // redirect path as the reg flow).
+  WRITE_MERCH_PICKUP:         "Write Merch Pickup",
+  // Sent by popup-merch.js when STORAGE_KEY.ATTENDEE_MERCH is empty
+  // (race: popup opened before the content script's on-load scrape
+  // finished). merch-attendee.js scrapes fresh and returns the state
+  // synchronously so the popup can render without waiting on storage.
+  GET_ATTENDEE_MERCH:         "Get Attendee Merch",
 };
 
-// ── CHROME.STORAGE.LOCAL KEY NAMES ───────────────────────────────────────
-// All keys we read/write in chrome.storage.local are listed here so we can
-// search the codebase by key name and find every place that touches it.
+// ── EXTEND STORAGE_KEY WITH APP-SPECIFIC KEYS ───────────────────────────
+// STORAGE_KEY itself is declared in shared/js/constants-base.js. Here we
+// only ADD entries -- never redeclare the object, or we'll throw
+// "Identifier already declared".
 //
-// ATTENDEE / REGISTRATIONS / ACCOUNT — cached scrape results
-// MANAGEMENT_OVERRIDE     — boolean toggle set by options page
-// AGE_VERIFIED            — per-attendee flag set when staff confirms ID
-// PENDING_ICON_UPDATE     — write here to wake the background service worker
-// ACCOUNT_AUTO_NAV        — flag set by popup so accountPage knows to
-//                           auto-click the first SUCCEEDED registration
-// REGISTRATION_ERROR      — populated when a forwarding step fails
-// NOTE_ACKNOWLEDGED       — set by popup when the volunteer dismisses the
-//                           registration-note screen; cleared on popup reset
+// ATTENDEE / REGISTRATIONS / ACCOUNT -- cached scrape results
+// AGE_VERIFIED            -- per-attendee flag set when staff confirms ID
+// ACCOUNT_AUTO_NAV        -- flag set by popup so accountPage knows to
+//                            auto-click the first SUCCEEDED registration
+// NOTE_ACKNOWLEDGED       -- set by popup when the volunteer dismisses the
+//                            registration-note screen; cleared on popup reset
 
-const STORAGE_KEY = {
-  ATTENDEE:            "attendee",
-  REGISTRATIONS:       "registrations",
-  ACCOUNT:             "account",
-  MANAGEMENT_OVERRIDE: "managementOverride",
-  AGE_VERIFIED:        "ageVerified",
-  PENDING_ICON_UPDATE: "pendingIconUpdate",
-  ACCOUNT_AUTO_NAV:    "cvgAccountAutoNav",
-  REGISTRATION_ERROR:  "REGISTRATION_ERROR",
-  NOTE_ACKNOWLEDGED:   "noteAcknowledged",
-};
+STORAGE_KEY.ATTENDEE          = "attendee";
+STORAGE_KEY.ATTENDEE_MERCH    = "attendeeMerch";   // merch-mode equivalent of ATTENDEE
+STORAGE_KEY.REGISTRATIONS     = "registrations";
+STORAGE_KEY.ACCOUNT           = "account";
+STORAGE_KEY.AGE_VERIFIED      = "ageVerified";
+STORAGE_KEY.ACCOUNT_AUTO_NAV  = "cvgAccountAutoNav";
+STORAGE_KEY.NOTE_ACKNOWLEDGED = "noteAcknowledged";
 
 // ── BLOCKING / WARNING CONDITION KEYS ────────────────────────────────────
 // Keys for every blocking/warning condition. Used as keys in the reasons
@@ -109,59 +118,5 @@ const EVENT_MATCH = {
   TEST:     "TEST",
   MISMATCH: "MISMATCH",
 };
-
-// ── ERROR MESSAGE TEMPLATES ──────────────────────────────────────────────
-// User-friendly templates for errors surfaced in the popup. Every
-// popup-displayed error MUST come from one of these keys — when an
-// unrecognised key is passed, callers fall back to UNKNOWN_ERROR.
-//
-// Defined here (rather than in background.js or popup.js) so the service
-// worker, content scripts, and popup all reference the same table. The
-// service worker picks this up via importScripts("constants.js"); the
-// popup and content scripts pick it up via the manifest content_scripts
-// load order or the <script> tags in popup.html.
-
-const ERROR_MESSAGES = {
-  NO_VALID_EVENT: {
-    title:  "No event found",
-    detail: "We couldn't locate your current event. Please make sure you're viewing the correct account page.",
-    action: "Try refreshing the page and clicking the extension icon again",
-  },
-  NO_SUCCEEDED_REGISTRATION: {
-    title:  "No active registrations found",
-    detail: "This attendee doesn't have any confirmed registrations for the current event.",
-    action: "Verify the attendee is registered for this event in Neon",
-  },
-  NAVIGATION_FAILED: {
-    title:  "Navigation error",
-    detail: "We couldn't navigate to the registration page automatically.",
-    action: "Navigate to the event registrations page manually and try again",
-  },
-  SCRIPT_INJECTION_FAILED: {
-    title:  "Unable to read account data",
-    detail: "The extension encountered a technical issue reading the page.",
-    action: "Refresh the page and try clicking the extension icon again",
-  },
-  TIMEOUT: {
-    title:  "Request took too long",
-    detail: "The page didn't load quickly enough. This can happen if you're on a slow connection.",
-    action: "Wait a moment and try again",
-  },
-  UNKNOWN_ERROR: {
-    title:  "Something went wrong",
-    detail: "An unexpected error occurred while processing your request.",
-    action: "Try refreshing the page and try again. If the problem persists, contact IT",
-  },
-};
-
-// ── DEBUG HELPER ─────────────────────────────────────────────────────────
-// Cheap wrapper around console.log gated on CONFIG.debug (defined in
-// config.js, which is loaded before this file in every entry point).
-// Use dbg(...) for chatty per-page-load tracing; keep console.error /
-// console.warn for things the developer always wants to see.
-
-function dbg(...args) {
-  if (typeof CONFIG !== "undefined" && CONFIG.debug) console.log(...args);
-}
 
 // end js/constants.js

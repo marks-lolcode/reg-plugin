@@ -26,33 +26,71 @@ A Chrome Manifest V3 extension used by CONvergence Registration volunteers to va
 
 ## Architecture
 
-Content scripts are injected by URL pattern (see `manifest.json` → `content_scripts`). They are plain (non-module) scripts. `config.js` and `js/constants.js` are injected first so `CONFIG`, `STATE`, `ACTION`, `STORAGE_KEY`, `CONDITION`, `EVENT_MATCH`, `REG_STATUS`, `ERROR_MESSAGES`, and the `dbg()` helper are available as globals — do not add `import`/`export`.
+Content scripts are injected by URL pattern (see `manifest.json` → `content_scripts`). They are plain (non-module) scripts loaded in this order:
 
-Flow:
+1. `shared/js/constants-base.js` — framework constants: `STATE`, `EXTENSION_MODE`, `ERROR_MESSAGES`, `dbg()`, and the icon-machinery `STORAGE_KEY` entries (`MANAGEMENT_OVERRIDE`, `PENDING_ICON_UPDATE`, `REGISTRATION_ERROR`, `EXTENSION_MODE`).
+2. `config.js` — annual settings, including `CONFIG.debug` and `CONFIG.merch.items`.
+3. `js/constants.js` — app-specific globals: `REG_STATUS`, `ACTION`, `CONDITION`, `EVENT_MATCH`. Mutates `STORAGE_KEY` to add app keys (`ATTENDEE`, `ATTENDEE_MERCH`, `REGISTRATIONS`, etc.) without redeclaring it.
+4. The per-URL content script(s) listed in the table below.
+
+Do not add `import` / `export`. The `shared/` folder exists to keep framework-level helpers (constants, icon cache, hashing) separate from app-specific code; it is internal organization, not a cross-extension boundary.
+
+### Modes
+
+The extension ships two flows in one install, gated by `STORAGE_KEY.EXTENSION_MODE` (set on the options page; defaults to `EXTENSION_MODE.REG`):
+
+- `EXTENSION_MODE.REG` — badge check-in. `js/popup.js` drives the UI; `js/attendeeContact.js` scrapes and writes the attendee form.
+- `EXTENSION_MODE.MERCH` — merchandise pickup. `js/popup-merch.js` drives the UI; `js/merch-attendee.js` scrapes and writes the attendee form.
+
+`js/popup.js`'s `displayPopup()` reads mode first and delegates to `displayMerchPopup()` (defined in `js/popup-merch.js`) when MERCH is active. Content scripts loaded on the same page check mode at the top of their IIFE and the off-mode one returns early so they don't compete for storage.
+
+### Flow (REG mode)
+
 ```
 Neon page loads
   → background.js (service worker) sees the URL via webNavigation
   → sends ACTION.GET_* message to the matching content script
   → content script scrapes the page, returns a state object
   → background.js writes the result to chrome.storage.local and updates the toolbar icon
-  → user clicks toolbar → popup.html → popup.js reads storage and renders
+  → user clicks toolbar → popup.html → popup.js reads mode (REG) and renders
     • on the registrations view, popup.js gates on STORAGE_KEY.NOTE_ACKNOWLEDGED
       and shows the note screen first if the registration carries a note
       (see buildRegistrationsViewOrNote in js/popup.js)
   → popup.js triggers ACTION.INCREMENT_BADGE_COUNT → attendeeContact.js writes fields and submits form
 ```
 
-| URL pattern | Script |
+### Flow (MERCH mode)
+
+```
+Neon attendee page loads
+  → attendeeContact.js IIFE sees MERCH mode, returns early (but its message listener stays registered)
+  → merch-attendee.js IIFE scrapes via readFieldValueByLabel (walks .form-group.edit-attendee divs):
+    • source field (T-shirt session select OR Souvenir Guide radio.optionId) tested against CONFIG.merch.items[].source matcher
+    • pickup field (text input) read for already-picked-up state
+  → writes STORAGE_KEY.ATTENDEE_MERCH and fires PENDING_ICON_UPDATE
+  → user clicks toolbar → popup.html → popup.js reads mode (MERCH) → displayMerchPopup()
+    • popup-merch.js reads STORAGE_KEY.ATTENDEE_MERCH; on miss, falls back to ACTION.GET_ATTENDEE_MERCH (fresh on-demand scrape)
+    • renders one checkbox per ordered item; already-picked-up items are checked+disabled
+  → click Confirm Pickup → ACTION.WRITE_MERCH_PICKUP → merch-attendee.js writes date/time
+    to each named pickup field (MM/DD/YYYY HH:MM, 24-hour), arms ACTION.ARM_POST_CHECKIN_REDIRECT,
+    clicks Save. background.js bounces the tab to the dashboard.
+```
+
+### URL pattern → content scripts
+
+| URL pattern | Scripts (in manifest load order, after shared+config+constants) |
 |---|---|
 | `/admin/accounts/*` | `js/accountPage.js` |
-| `/np/admin/event/attendeeEdit.do*` | `js/attendeeContact.js` |
-| `/np/admin/event/contactSelect.do*` | `js/attendeeContact.js` |
-| `/np/admin/event/eventRegDetails.do*` | `js/registrations.js` |
+| `/np/admin/event/attendeeEdit.do*` | `js/attendeeContact.js`, `js/merch-attendee.js` |
+| `/np/admin/event/contactSelect.do*` | `js/attendeeContact.js`, `js/merch-attendee.js` |
+| `/np/admin/event/eventRegDetails.do*` | `js/registrations.js` (mode-aware: in MERCH mode it skips reg validation and attaches a per-attendee merch summary using `readField()` + `readCartLineValue()`) |
+
+`js/merch-attendee.js` is loaded AFTER `js/attendeeContact.js` so that helpers defined as content-script globals in attendeeContact.js (`buildCustomFieldLabelMap`, etc.) are in scope.
 
 Other entry points:
-- `popup.html` loads `config.js`, `js/constants.js`, `js/popup.js` (popup UI).
-- `extension_options_page.html` is the manifest `options_ui` page; loads `config.js`, `js/constants.js`, `js/options.js` (manager-override toggle).
-- `js/background.js` is the MV3 service worker. It uses `importScripts("../config.js", "constants.js")` (paths relative to `js/background.js`) — keep that working when moving files.
+- `popup.html` loads `shared/js/constants-base.js`, `config.js`, `js/constants.js`, `js/popup.js`, `js/popup-merch.js` (popup UI dispatcher + reg + merch).
+- `extension_options_page.html` is the manifest `options_ui` page; loads `shared/js/constants-base.js`, `shared/js/crypto.js`, `config.js`, `js/constants.js`, `js/options.js` (mode radio + manager-override toggle).
+- `js/background.js` is the MV3 service worker. It uses `importScripts("../shared/js/constants-base.js", "../config.js", "constants.js", "../shared/js/background-core.js")` (paths relative to `js/background.js`) — keep that working when moving files. Icon caching, `setIcon`, and `worstStateFromRows` live in `shared/js/background-core.js` and are mode-agnostic.
 
 Icons are rendered as `ImageData` (not paths) from `assets/wink-{state}-{size}.png` because `setIcon({ path })` is unreliable from an MV3 service worker. The "M" badge for Manager Override is drawn over the cached ImageData at runtime.
 
@@ -64,8 +102,18 @@ Icons are rendered as `ImageData` (not paths) from `assets/wink-{state}-{size}.p
 - **Hold messages order** in `CONFIG.holdMessages` MUST match the hold-index order used in `attendeeContact.js` (`[regHold, artShowHold, opsHold]`).
 - **Custom fields are resolved by label substring** (`CONFIG.fieldLabels`), then positional within duplicates — three fields share the label "HOLD", resolved by order. If Neon reorganizes fields, hand-trace the field indexes in DevTools against the live page.
 - **Attendee state object** built by `attendeeContact.js` and consumed by `popup.js` — if you change its shape, update both. Documented in `DEVELOPER.MD`.
-- **Management password** is only stored as a SHA-256 hex hash in `CONFIG.managementPasswordHash`. The plaintext goes nowhere in the repo.
-- **Debug logging:** use `dbg(...)` (defined in `js/constants.js`) for chatty per-page-load traces, gated on `CONFIG.debug`. Keep `console.error` / `console.warn` for messages a developer always needs to see. Convert existing `console.log` calls to `dbg()` as you touch surrounding code.
+- **Merch state object** built by `merch-attendee.js` and consumed by `popup-merch.js` — shape `{ accountId, attendeeId, legalName, preferredName, items: [{name, ordered, variant, alreadyPickedUp, pickedUpAt}] }`. Stored under `STORAGE_KEY.ATTENDEE_MERCH`. If you change the shape, update both files.
+- **Mode awareness in content scripts:** any content script that reads/writes for a specific mode must check `STORAGE_KEY.EXTENSION_MODE` at the top of its IIFE and return early if it's not its mode, leaving message listeners registered. Today: `attendeeContact.js` bails in MERCH; `merch-attendee.js` bails in REG; `registrations.js` is mode-aware in its scrape rather than bailing (it serves both modes).
+- **Merch field labels match by substring** like the rest of the form-label resolution. `CONFIG.merch.items[].source.label` and `pickupFieldLabel` are substrings of the actual Neon labels — keep them generic enough to survive minor copy edits but specific enough not to collide. Matcher modes: `"anyExcept"` (ordered if value differs from `notOrderedValue`; the value IS the variant) and `"substring"` (ordered if value contains `matchValue`; no variant).
+- **Date/time written to merch pickup fields** is `MM/DD/YYYY HH:MM` 24-hour, from `formatMerchDateTime()` in `merch-attendee.js`. Change there if Neon's text-field validation gets fussier.
+- **Management password** is only stored as a SHA-256 hex hash in `CONFIG.managementPasswordHash`. The plaintext goes nowhere in the repo. Hashing helper lives in `shared/js/crypto.js`.
+- **Debug logging:** use `dbg(...)` (defined in `shared/js/constants-base.js`) for chatty per-page-load traces, gated on `CONFIG.debug`. Keep `console.error` / `console.warn` for messages a developer always needs to see. The merch content script uses plain `console.log` with a `merch-attendee.js:` prefix so volunteers can read it directly when debugging field-label mismatches.
 
 ## Annual update surface area
-All yearly edits live in `config.js` (search `UPDATE EACH YEAR`) plus `manifest.json` `version`. The change set is enumerated in `ANNUAL_UPDATE_GUIDE.md` — keep that guide in sync whenever the shape of `CONFIG` changes.
+All yearly edits live in `config.js` (search `UPDATE EACH YEAR`) plus `manifest.json` `version`. Specifically:
+- `CONFIG.event.currentEventNames` and `testEventNames`
+- `CONFIG.ticketTypes[].nameIncludes`
+- `CONFIG.managementPasswordHash` (regenerate via `tools/generate-password-hash.html`)
+- `CONFIG.merch.items[]` — merch catalog. Each item declares `source.label` (substring of registration field label), `source.matchMode` + `notOrderedValue`/`matchValue`, and `pickupFieldLabel` (substring of the Neon attendee form's pickup field for this item). The two pickup fields must exist on the attendee form in Neon — adding new merch items usually requires adding new pickup fields in Neon first.
+
+The change set is enumerated in `ANNUAL_UPDATE_GUIDE.md` — keep that guide in sync whenever the shape of `CONFIG` changes.

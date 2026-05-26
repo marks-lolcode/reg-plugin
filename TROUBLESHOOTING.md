@@ -93,6 +93,38 @@ button still isn't there, see "Extension popup is blank" above.
 
 ---
 
+## Merch popup shows "(no merch ordered)" or no checkboxes even though the attendee ordered items
+
+The extension matches merch items by the **label substring** of the
+registration field. If Neon changed the question text (e.g., from
+"Preorder your 2026 T-shirt" to "Order Your CONvergence 2027 T-shirt"),
+the substring no longer matches and the extension thinks the attendee
+ordered nothing.
+
+What to do:
+
+1. Open `config.js` and find the `merch` section. For each item, the
+   `source.label` value must be a substring of the actual question label
+   on the registration form.
+2. Check the matcher:
+   - `matchMode: "anyExcept"` -- the `notOrderedValue` must EXACTLY match
+     the dropdown option text shown when no item is selected.
+   - `matchMode: "substring"` -- the `matchValue` must appear in the
+     radio option text shown when the attendee chose "Yes" (or
+     equivalent).
+3. Open the attendee edit page in Neon, then **right-click the extension
+   icon → Inspect popup** and check the DevTools Console for lines from
+   `merch-attendee.js:` -- they log the scraped value of each source
+   field, which tells you exactly what to match against.
+4. Pickup fields work the same way: `pickupFieldLabel` must be a
+   substring of the actual pickup-tracking field's label.
+
+This is also the most likely cause of "Could not record pickup" errors
+after clicking Confirm Pickup -- the pickup field's label substring is
+wrong and the extension can't find the element to write to.
+
+---
+
 ## Debugging recipes (for IT)
 
 - **Content-script logs across navigations** — DevTools on the Neon tab,
