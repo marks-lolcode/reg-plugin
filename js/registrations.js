@@ -36,10 +36,21 @@
 // Injected by manifest on: /np/admin/event/eventRegDetails.do
 // ============================================================================
 
+// ── EXTENSION MODE (cached) ─────────────────────────────────────────────
+// Read once on page load. The popup's GET_REGISTRATIONS listener uses the
+// cached value so synchronous scrape paths don't have to re-read storage.
+// Mode changes take effect on next page navigation.
+
+let extensionMode = EXTENSION_MODE.REG;
+
 // ── TRIGGER DATA SCRAPE AND ICON UPDATE ON PAGE LOAD ────────────────────
 
 (async function triggerIconUpdate() {
   console.log("registrations.js: page load, triggering data scrape");
+  const modeResult = await chrome.storage.local.get({ [STORAGE_KEY.EXTENSION_MODE]: EXTENSION_MODE.REG });
+  extensionMode    = modeResult[STORAGE_KEY.EXTENSION_MODE];
+  console.log(`registrations.js: extensionMode = ${extensionMode}`);
+
   const data  = getRegistrationsInfo();
   const notes = getRegistrationNotes();
   await chrome.storage.local.set({
@@ -585,6 +596,23 @@ function getRegistrationsInfo() {
       `fieldsTable: ${fieldsTable ? "found" : "NOT FOUND"}`
     );
 
+    // In MERCH mode, skip badge-eligibility validation entirely and return
+    // a simpler record annotated with the per-attendee merch summary.
+    // popup-merch.js renders directly from these records.
+    if (extensionMode === EXTENSION_MODE.MERCH) {
+      return {
+        accountId,
+        neonAttendeeId,
+        legalName:     effectiveLegalName,
+        preferredName: preferredName || effectiveLegalName.split(" ")[0],
+        ticket:        ticketConfig.ticketLabel,
+        merch:         scrapeAttendeeMerchSummary(fieldsTable, td),
+        state:         STATE.GREEN,
+        reasons:       [],
+        missingRequiredFields: [],
+      };
+    }
+
     return buildRegistrantState({
       accountId, neonAttendeeId,
       legalName: effectiveLegalName,
@@ -771,6 +799,102 @@ function buildRegistrantState({
     reasons,
     missingRequiredFields: missingIce ? [CONFIG.fieldLabels.iceContact] : [],
   };
+}
+
+// ── MERCH MODE: PER-ATTENDEE MERCH SUMMARY ───────────────────────────────
+//
+// Best-effort scrape of merch source fields from the eventreg page for
+// each attendee row. Uses the existing readField() helper which handles
+// both standard and dealer layouts via viewLabel/viewField pairs.
+//
+// If a source field isn't visible in the eventreg DOM (Neon admin choice
+// not to show it), the entry's `ordered` is null -- popup-merch.js shows
+// "Review on attendee page" in that case rather than guessing.
+//
+// matcher logic is duplicated here from js/merch-attendee.js because the
+// two scripts live in different content-script worlds (different URL
+// patterns). The duplication is ~10 lines and kept in lockstep by hand.
+
+function scrapeAttendeeMerchSummary(fieldsTable, attendeeTd) {
+  return (CONFIG.merch?.items ?? []).map(item => {
+    if (item.source?.type !== "customField") {
+      // Phase B2 only implements customField source matching.
+      return { name: item.name, ordered: false, variant: null };
+    }
+
+    // Try the per-attendee customDataList-style table first (e.g.,
+    // "Pre-order Souvenir Guide" appears as a regular custom field).
+    let sourceVal = readField(fieldsTable, item.source.label);
+
+    // Fall back to shopping cart line items (e.g., "Preorder your 2026
+    // T-shirt" appears as a <b>label:</b><span class="viewField">(value
+    // - $price)</span> row OUTSIDE the customDataList-style table).
+    let fromCartLine = false;
+    if (sourceVal === "") {
+      sourceVal = readCartLineValue(attendeeTd, item.source.label);
+      if (sourceVal !== "") fromCartLine = true;
+    }
+
+    const ordered = isMerchItemOrdered(item, sourceVal);
+    let variant = null;
+    if (ordered && item.source.matchMode === "anyExcept") {
+      variant = fromCartLine ? cleanCartLineValue(sourceVal) : sourceVal;
+    }
+    return { name: item.name, ordered, variant };
+  });
+}
+
+/**
+ * Walks <tr> siblings AFTER the attendee header row (the row containing
+ * the td.textSmall "Attendee N" header), stopping at the next attendee
+ * header, looking for a <b> whose text contains labelText. Returns the
+ * adjacent <span class="viewField"> text, or "" if not found.
+ *
+ * Shopping cart line items (Event Admission, T-shirt preorder, etc.)
+ * appear in this region rather than in the per-attendee customDataList
+ * table, so this is the only way to read them.
+ */
+function readCartLineValue(attendeeTd, labelText) {
+  if (!attendeeTd) return "";
+  const startTr = attendeeTd.closest("tr");
+  if (!startTr) return "";
+
+  let row = startTr.nextElementSibling;
+  while (row) {
+    // Stop at the next attendee block.
+    if (row.querySelector("td.textSmall")) break;
+
+    const bold = row.querySelector("b");
+    if (bold && bold.textContent.trim().includes(labelText)) {
+      const val = row.querySelector("span.viewField")?.textContent?.trim() ?? "";
+      console.log(`readCartLineValue "${labelText}" → "${val || "(empty)"}"`);
+      return val;
+    }
+    row = row.nextElementSibling;
+  }
+  return "";
+}
+
+/**
+ * Strips Neon's shopping-cart formatting from a cart-line value.
+ *   "(Unisex XXXXXL - $25.00)"                          -> "Unisex XXXXXL"
+ *   "(Adult (Age 18+) until June 15, 2026 - $115.00)"   -> "Adult (Age 18+) until June 15, 2026"
+ * If the formatting doesn't match, returns the input unchanged.
+ */
+function cleanCartLineValue(raw) {
+  const m = raw.match(/^\((.*?)\s*-\s*\$[\d,]+(?:\.\d+)?\)$/);
+  return m ? m[1].trim() : raw;
+}
+
+function isMerchItemOrdered(item, fieldValue) {
+  const src = item.source ?? {};
+  if (src.matchMode === "anyExcept") {
+    return fieldValue !== "" && fieldValue !== src.notOrderedValue;
+  }
+  if (src.matchMode === "substring") {
+    return fieldValue.includes(src.matchValue ?? "");
+  }
+  return false;
 }
 
 // end js/registrations.js

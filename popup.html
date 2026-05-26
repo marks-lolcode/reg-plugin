@@ -3,9 +3,16 @@
      Extension popup window for the CONvergence Check-In extension.
      All styles live in css/popup.css — do not add <style> blocks here.
      Scripts are loaded in dependency order:
-       1. config.js           — annual settings (event IDs, field labels)
-       2. js/constants.js     — shared string constants (STATE, ACTION, etc.)
-       4. js/popup.js         — UI logic, last so globals are available
+       1. shared/js/constants-base.js -- framework constants (STATE,
+                                          icon-machinery STORAGE_KEY, ERROR_MESSAGES, dbg)
+       2. config.js                   -- annual settings (event IDs, field labels)
+       3. js/constants.js             -- app-specific constants (REG_STATUS,
+                                          ACTION, CONDITION, EVENT_MATCH; extends STORAGE_KEY)
+       4. js/popup.js                 -- reg-mode UI + entry point (calls
+                                          displayMerchPopup() when mode is merch)
+       5. js/popup-merch.js           -- merch-mode UI, loaded after popup.js
+                                          so displayMerchPopup() is defined when
+                                          popup.js dispatches to it
      --------------------------------------------------------------- -->
 <!DOCTYPE html>
 <html lang="en">
@@ -15,9 +22,11 @@
   <link rel="stylesheet" href="css/popup.css">
 </head>
 <body>
+  <script src="shared/js/constants-base.js"></script>
   <script src="config.js"></script>
   <script src="js/constants.js"></script>
   <script src="js/popup.js"></script>
+  <script src="js/popup-merch.js"></script>
 </body>
 </html>
 <!-- end popup.html -->

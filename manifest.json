@@ -3,7 +3,7 @@
   "name": "CONvergence Check-In",
   "description": "Validates and processes CONvergence attendee check-ins via Neon CRM.",
   "author": "CONvergence IT — Matt Resong, Colleen Baltutis, Sean Berry, Mark Sauntry",
-  "version": "2026.2",
+  "version": "2026.3",
   "icons": {
     "48": "assets/wink-with-note-black-48.png",
     "16": "assets/wink-black-16.png"
@@ -13,28 +13,28 @@
       "matches": [
         "https://ce.app.neoncrm.com/admin/accounts/*"
       ],
-      "js": ["config.js", "js/constants.js", "js/accountPage.js"],
+      "js": ["shared/js/constants-base.js", "config.js", "js/constants.js", "js/accountPage.js"],
       "run_at": "document_end"
     },
     {
       "matches": [
         "https://ce.app.neoncrm.com/np/admin/event/attendeeEdit.do*"
       ],
-      "js": ["config.js", "js/constants.js", "js/attendeeContact.js"],
+      "js": ["shared/js/constants-base.js", "config.js", "js/constants.js", "js/attendeeContact.js", "js/merch-attendee.js"],
       "run_at": "document_end"
     },
     {
       "matches": [
         "https://ce.app.neoncrm.com/np/admin/event/contactSelect.do*"
       ],
-      "js": ["config.js", "js/constants.js", "js/attendeeContact.js"],
+      "js": ["shared/js/constants-base.js", "config.js", "js/constants.js", "js/attendeeContact.js", "js/merch-attendee.js"],
       "run_at": "document_end"
     },
     {
       "matches": [
         "https://ce.app.neoncrm.com/np/admin/event/eventRegDetails.do*"
       ],
-      "js": ["config.js", "js/constants.js", "js/registrations.js"],
+      "js": ["shared/js/constants-base.js", "config.js", "js/constants.js", "js/registrations.js"],
       "run_at": "document_end"
     }
   ],

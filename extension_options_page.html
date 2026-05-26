@@ -53,6 +53,35 @@
       cursor: pointer;
     }
 
+    .mode-row {
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #eee;
+    }
+
+    .mode-row .mode-label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: bold;
+      font-size: 13px;
+    }
+
+    .mode-row .mode-option {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-right: 16px;
+      font-weight: normal;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .mode-row .mode-option input[type="radio"] {
+      width: 14px;
+      height: 14px;
+      cursor: pointer;
+    }
+
     #password-row {
       display: none;
       margin-bottom: 12px;
@@ -84,6 +113,18 @@
 <body>
   <h2>CONvergence Check-In — Options</h2>
 
+  <div class="mode-row">
+    <span class="mode-label">Extension Mode</span>
+    <label class="mode-option">
+      <input type="radio" name="ext-mode" value="reg" id="mode-reg">
+      <span>Registration (badge check-in)</span>
+    </label>
+    <label class="mode-option">
+      <input type="radio" name="ext-mode" value="merch" id="mode-merch">
+      <span>Merchandise pickup</span>
+    </label>
+  </div>
+
   <div class="checkbox-row">
     <input type="checkbox" id="mngtoverride">
     <label for="mngtoverride">Enable Management Override</label>
@@ -97,6 +138,8 @@
   <div id="status"></div>
   <button id="save">Save Options</button>
 
+  <script src="shared/js/constants-base.js"></script>
+  <script src="shared/js/crypto.js"></script>
   <script src="config.js"></script>
   <script src="js/constants.js"></script>
   <script src="js/options.js"></script>

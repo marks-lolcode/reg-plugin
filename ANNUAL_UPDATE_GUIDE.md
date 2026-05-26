@@ -144,6 +144,58 @@ to match a word that does appear in the new name.
 
 ---
 
+### 2e. Confirm Merchandise Items (Merch Mode)
+
+The extension has a separate Merch mode (set on the Options page) that
+tracks pickup of preorder merch. Find the `merch` section in `config.js`.
+It looks like this:
+
+```javascript
+merch: {
+  items: [
+    {
+      name: "T-Shirt",
+      source: {
+        type: "customField",
+        label: "Preorder your 2026 T-shirt",
+        matchMode: "anyExcept",
+        notOrderedValue: "Check the box then click to pick your shirt style and size",
+      },
+      pickupFieldLabel: "T-Shirt Picked Up",
+    },
+    {
+      name: "Souvenir Guide",
+      source: {
+        type: "customField",
+        label: "Pre-order Souvenir Guide",
+        matchMode: "substring",
+        matchValue: "Reserve a free printed Guide",
+      },
+      pickupFieldLabel: "Guide Picked Up",
+    },
+  ],
+},
+```
+
+For each item, confirm:
+
+- `source.label` -- the registration form field's label (or a substring
+  of it). Open a real registration in Neon; the dropdown or radio for
+  this year's merch question must contain this text in its label.
+- For `matchMode: "anyExcept"` (T-shirt-style): confirm `notOrderedValue`
+  matches the option that is shown when the attendee did NOT order.
+- For `matchMode: "substring"` (radio yes/no-style): confirm `matchValue`
+  appears in the label of the "ordered" option (e.g., the Yes choice).
+- `pickupFieldLabel` -- the label of the matching pickup-tracking field
+  on the attendee form. These are the fields the extension writes the
+  date/time into. They must exist on the form (ask the Neon admin to
+  add them if missing).
+
+If a merch item is no longer offered this year, delete its entry. If
+new items are offered, copy an existing entry and adjust the labels.
+
+---
+
 ## Step 3 — Verify Field Indexes
 
 Neon occasionally reorganizes its custom fields. If the indexes have changed,
