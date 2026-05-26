@@ -42,6 +42,7 @@ document.addEventListener("DOMContentLoaded", displayPopup);
 // Red bar shown at top of every view while Manager Override is active.
 // Set by the Options page; stored in chrome.storage.local.
 
+// ── OVERRIDE BANNER ────────────────────────────────────────────────────────
 function buildOverrideBanner() {
   const bar = el("div", { className: "override-bar" });
   bar.textContent = "MANAGER OVERRIDE ACTIVE";
@@ -54,6 +55,7 @@ function buildOverrideBanner() {
 // The `document.body.dataset.rendered` guard prevents double-render in
 // case the popup is somehow opened twice quickly.
 
+// ── ENTRY POINT ────────────────────────────────────────────────────────────
 async function displayPopup() {
   if (document.body.dataset.rendered) return;
   document.body.dataset.rendered = "1";
@@ -90,7 +92,7 @@ async function displayPopup() {
     const result        = await chrome.storage.local.get(STORAGE_KEY.REGISTRATIONS);
     const registrations = result[STORAGE_KEY.REGISTRATIONS];
     registrations
-      ? buildRegistrationsView(registrations, activeTab)
+      ? buildRegistrationsViewOrNote(registrations, activeTab)
       : buildNotFoundView(
           "No registration data found.",
           "Navigate to a registration page first, then try again."
@@ -119,6 +121,51 @@ function buildAccountLoadingView() {
 // reads the cached result from chrome.storage.local. Do not re-scrape here.
 
 async function buildAccountView(account, tab) {
+// ── REGISTRATIONS: NOTE GATE ───────────────────────────────────────────────
+// If the registration has a note, show it first and require acknowledgment
+// before proceeding to the normal attendee list.
+async function buildRegistrationsViewOrNote(registrationData, tab) {
+  const note = registrationData.note ?? "";
+  if (!note) {
+    buildRegistrationsView(registrationData, tab);
+    return;
+  }
+
+  const ackResult = await chrome.storage.local.get(STORAGE_KEY.NOTE_ACKNOWLEDGED);
+  const acknowledged = ackResult[STORAGE_KEY.NOTE_ACKNOWLEDGED] ?? false;
+  if (acknowledged) {
+    buildRegistrationsView(registrationData, tab);
+    return;
+  }
+
+  // Show note screen
+  const overrideResult = await chrome.storage.local.get(STORAGE_KEY.MANAGEMENT_OVERRIDE);
+  const managementOverride = overrideResult[STORAGE_KEY.MANAGEMENT_OVERRIDE] ?? false;
+
+  const body = document.body;
+  body.innerHTML = "";
+
+  if (managementOverride) body.appendChild(buildOverrideBanner());
+
+  const screen = el("div", { className: "note-screen" });
+  screen.appendChild(el("div", { className: "note-heading", textContent: "📋 Registration Note" }));
+  const noteText = el("div", { className: "note-text" });
+  noteText.textContent = note;
+  screen.appendChild(noteText);
+
+  const ackBtn = el("button", { className: "btn-note-ack" });
+  ackBtn.textContent = "Note Read ✓";
+  ackBtn.addEventListener("click", async () => {
+    await chrome.storage.local.set({ [STORAGE_KEY.NOTE_ACKNOWLEDGED]: true });
+    buildRegistrationsView(registrationData, tab);
+  });
+  screen.appendChild(ackBtn);
+
+  body.appendChild(screen);
+}
+
+// ── REGISTRATIONS VIEW ─────────────────────────────────────────────────────
+async function buildRegistrationsView(registrationData, tab) {
   const body = document.body;
   body.innerHTML = "";
 
@@ -378,6 +425,7 @@ async function navigateToAttendeeEdit(reg, tab) {
   // Clear the age-verified flag when moving to a new attendee so the
   // age verification step is enforced freshly for this person.
   await chrome.storage.local.remove([STORAGE_KEY.AGE_VERIFIED]);
+  await chrome.storage.local.remove([STORAGE_KEY.AGE_VERIFIED, STORAGE_KEY.NOTE_ACKNOWLEDGED]);
   await chrome.storage.local.set({ [STORAGE_KEY.ATTENDEE]: reg });
   const activeTab = await getActiveTab();
   const base = activeTab?.url?.includes(CONFIG.neon.trialDomain)
@@ -408,6 +456,7 @@ async function navigateToAttendeeEdit(reg, tab) {
 //                                number appears at the same time the
 //                                Badge Delivered button becomes active.
 
+// ── ATTENDEE VIEW ──────────────────────────────────────────────────────────
 async function buildAttendeeView(attendee, tab) {
   const body = document.body;
   body.innerHTML = "";
@@ -629,6 +678,98 @@ async function buildAttendeeView(attendee, tab) {
   // "Send to Help Desk" button and stop rendering.
   if (isBlocked) {
     body.appendChild(el("button", { className: "btn-no-issue", textContent: "NOT ALLOWED — SEND TO HELP DESK", disabled: true }));
+  // ── Re-check section ───────────────────────────────────────────────────────
+  // If any conditions are fixable on this page, show a single Re-check button
+  // plus a "Show me the field" button for ICE if that condition is present.
+  const fixableReasons = reasons.filter(r => r.fixable);
+  if (fixableReasons.length > 0) {
+    const recheckSection = el("div", { className: "recheck-section" });
+    const recheckBlock   = el("div", { className: "recheck-block" });
+
+    // "Show me the field" button — only for the ICE condition
+    const hasIce = fixableReasons.some(r => r.key === CONDITION.MISSING_ICE);
+    if (hasIce) {
+      const showBtn = el("button", { className: "btn-show-field" });
+      showBtn.textContent = "Show me the field ↓";
+      showBtn.addEventListener("click", () => {
+        chrome.tabs.sendMessage(tab.id, { action: ACTION.HIGHLIGHT_ICE_FIELD });
+        window.close();
+      });
+      recheckBlock.appendChild(showBtn);
+    }
+
+    // Single shared Re-check button for all fixable conditions
+    const recheckBtn = el("button", { className: "btn-recheck" });
+    recheckBtn.textContent = "Re-check ↺";
+    recheckBtn.addEventListener("click", async () => {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tabs[0]) return;
+      await chrome.storage.local.set({ [STORAGE_KEY.ATTENDEE]: attendee });
+      chrome.tabs.sendMessage(tabs[0].id, { action: ACTION.GET_ATTENDEE_DATA }, async (freshData) => {
+        if (freshData) {
+          await chrome.storage.local.set({ [STORAGE_KEY.ATTENDEE]: freshData });
+          buildAttendeeView(freshData, tab);
+        }
+      });
+    });
+    recheckBlock.appendChild(recheckBtn);
+    recheckSection.appendChild(recheckBlock);
+    body.appendChild(recheckSection);
+  }
+
+  // ── Action buttons ──
+  const hasNoAccountId = reasons.some(r => r.key === CONDITION.NO_ACCOUNT_ID);
+  const hasActiveHold  = reasons.some(r =>
+    r.key === CONDITION.REG_HOLD ||
+    r.key === CONDITION.ART_HOLD ||
+    r.key === CONDITION.OPS_HOLD
+  );
+
+  if (hasNoAccountId) {
+    // Can't proceed at all — no button
+  } else if (isBlocked && !managementOverride) {
+    body.appendChild(el("div", { className: "helpdesk-note", textContent: "Please send attendee to the Help Desk." }));
+  } else if (needsAgeStep) {
+    const ageBtn = el("button", { className: "btn-age-verify" });
+    ageBtn.textContent = "Age Verified, ID Returned ✓";
+    ageBtn.addEventListener("click", async () => {
+      await chrome.storage.local.set({ [STORAGE_KEY.AGE_VERIFIED]: true });
+      buildAttendeeView(attendee, tab);
+    });
+    body.appendChild(ageBtn);
+  } else if (!isBlocked || managementOverride) {
+    if (hasActiveHold) {
+      const noIssueBtn = el("button", { className: "btn-no-issue" });
+      noIssueBtn.textContent = "⛔ DO NOT ISSUE BADGE";
+      noIssueBtn.disabled = true;
+      body.appendChild(noIssueBtn);
+    } else if (fixableReasons.length === 0 || managementOverride) {
+      const btn = el("button", { className: "btn-checkin" });
+      btn.textContent = "Badge Delivered";
+      btn.addEventListener("click", () => doCheckIn(attendee, tab, btn));
+      body.appendChild(btn);
+    }
+  }
+}
+
+// ── NOT FOUND / GUIDANCE VIEW ──────────────────────────────────────────────
+async function buildNotFoundView(heading, detail) {
+  const overrideResult = await chrome.storage.local.get(STORAGE_KEY.MANAGEMENT_OVERRIDE);
+  const managementOverride = overrideResult[STORAGE_KEY.MANAGEMENT_OVERRIDE] ?? false;
+  document.body.innerHTML = "";
+  if (managementOverride) document.body.appendChild(buildOverrideBanner());
+  document.body.appendChild(el("div", { className: "not-found-heading", textContent: heading }));
+  document.body.appendChild(el("div", { className: "not-found-detail",  textContent: detail  }));
+}
+
+// ── CHECK-IN ACTION ────────────────────────────────────────────────────────
+async function doCheckIn(attendee, tab, btn) {
+  btn.disabled = true;
+  btn.textContent = "Processing…";
+
+  const csvResult = await saveBadgeCSV(attendee);
+  if (!csvResult.ok) {
+    showError(`Badge CSV could not be downloaded: ${csvResult.error}\n\nDo NOT hand out the badge. Please contact Registration Head.`);
     return;
   }
 
@@ -770,6 +911,7 @@ function showError(message) {
 // Writes the badge printer CSV file (one row per badge, downloaded
 // to the user's Downloads folder where the printer queue watches).
 
+// ── CSV DOWNLOAD ───────────────────────────────────────────────────────────
 async function saveBadgeCSV(attendee) {
   try {
     const headers = ["Badge Type", "Badge Image", "Account ID", "Print Number"];
@@ -801,6 +943,7 @@ function buildNotFoundView(heading, detail) {
 
 // ── UTILITIES ──────────────────────────────────────────────────────────
 
+// ── UTILITIES ──────────────────────────────────────────────────────────────
 async function getActiveTab() {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   return tabs?.[0];
