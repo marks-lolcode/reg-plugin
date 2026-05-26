@@ -11,32 +11,28 @@
   "content_scripts": [
     {
       "matches": [
-        "https://ce.app.neoncrm.com/admin/accounts/*",
-        "https://trial.z2systems.com/admin/accounts/*"
+        "https://ce.app.neoncrm.com/admin/accounts/*"
       ],
       "js": ["config.js", "js/constants.js", "js/accountPage.js"],
       "run_at": "document_end"
     },
     {
       "matches": [
-        "https://ce.app.neoncrm.com/np/admin/event/attendeeEdit.do*",
-        "https://trial.z2systems.com/np/admin/event/attendeeEdit.do*"
+        "https://ce.app.neoncrm.com/np/admin/event/attendeeEdit.do*"
       ],
       "js": ["config.js", "js/constants.js", "js/attendeeContact.js"],
       "run_at": "document_end"
     },
     {
       "matches": [
-        "https://ce.app.neoncrm.com/np/admin/event/contactSelect.do*",
-        "https://trial.z2systems.com/np/admin/event/contactSelect.do*"
+        "https://ce.app.neoncrm.com/np/admin/event/contactSelect.do*"
       ],
       "js": ["config.js", "js/constants.js", "js/attendeeContact.js"],
       "run_at": "document_end"
     },
     {
       "matches": [
-        "https://ce.app.neoncrm.com/np/admin/event/eventRegDetails.do*",
-        "https://trial.z2systems.com/np/admin/event/eventRegDetails.do*"
+        "https://ce.app.neoncrm.com/np/admin/event/eventRegDetails.do*"
       ],
       "js": ["config.js", "js/constants.js", "js/registrations.js"],
       "run_at": "document_end"
@@ -45,9 +41,7 @@
   "permissions": ["storage", "tabs", "webNavigation", "scripting"],
   "host_permissions": [
     "https://ce.app.neoncrm.com/np/admin/event/*",
-    "https://ce.app.neoncrm.com/admin/accounts/*",
-    "https://trial.z2systems.com/np/admin/event/*",
-    "https://trial.z2systems.com/admin/accounts/*"
+    "https://ce.app.neoncrm.com/admin/accounts/*"
   ],
   "action": {
     "default_icon": {

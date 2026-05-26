@@ -733,6 +733,11 @@ function incrementBadge() {
   customField(timeIdx).value = now.toLocaleTimeString();
   console.log(`Pickup timestamp written to slot date[${dateIdx}] / time[${timeIdx}]`);
 
+  // Arm the post-check-in redirect before the form POST. background.js
+  // watches for the eventRegDetails navigation that Neon will trigger and
+  // bounces the tab to the account search page.
+  chrome.runtime.sendMessage({ action: ACTION.ARM_POST_CHECKIN_REDIRECT });
+
   saveButton.click();
   return { ok: true };
 }

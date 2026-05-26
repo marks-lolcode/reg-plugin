@@ -427,12 +427,8 @@ async function navigateToAttendeeEdit(reg, tab) {
   await chrome.storage.local.remove([STORAGE_KEY.AGE_VERIFIED]);
   await chrome.storage.local.remove([STORAGE_KEY.AGE_VERIFIED, STORAGE_KEY.NOTE_ACKNOWLEDGED]);
   await chrome.storage.local.set({ [STORAGE_KEY.ATTENDEE]: reg });
-  const activeTab = await getActiveTab();
-  const base = activeTab?.url?.includes(CONFIG.neon.trialDomain)
-    ? `https://${CONFIG.neon.trialDomain}`
-    : `https://${CONFIG.neon.productionDomain}`;
   await chrome.tabs.update(tab.id, {
-    url: `${base}/np/admin/event/attendeeEdit.do?id=${reg.neonAttendeeId}&acct=${reg.accountId}`,
+    url: `https://${CONFIG.neon.productionDomain}/np/admin/event/attendeeEdit.do?id=${reg.neonAttendeeId}&acct=${reg.accountId}`,
   });
   window.close();
 }

@@ -45,12 +45,12 @@ const CONFIG = {
     ],
   },
 
-  // ── NEON CRM DOMAINS ─────────────────────────────────────────────────
-  // Only update if Neon notifies you of a URL change (very rare).
+  // ── NEON CRM DOMAIN ──────────────────────────────────────────────────
+  // The production Neon CRM hostname. Only update if Neon notifies you of
+  // a URL change (very rare).
   //
   neon: {
     productionDomain: "ce.app.neoncrm.com",
-    trialDomain:      "trial.z2systems.com",
   },
 
   // ── TICKET TYPE RULES ────────────────────────────────────────────────

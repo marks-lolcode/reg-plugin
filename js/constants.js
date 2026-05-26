@@ -33,12 +33,17 @@ const REG_STATUS = {
 // message MUST use one of these constants — never raw strings.
 
 const ACTION = {
-  GET_ATTENDEE_DATA:     "Get Attendee Data",
-  GET_REGISTRATIONS:     "Get Registrations Data",
-  GET_ACCOUNT_DATA:      "Get Account Data",       // popup → accountPage.js
-  INCREMENT_BADGE_COUNT: "Increment Badge Count",
-  HIGHLIGHT_ICE_FIELD:   "Highlight ICE Field",
-  NAVIGATE_TO_EVENT_REG: "Navigate To Event Reg",
+  GET_ATTENDEE_DATA:          "Get Attendee Data",
+  GET_REGISTRATIONS:          "Get Registrations Data",
+  GET_ACCOUNT_DATA:           "Get Account Data",       // popup → accountPage.js
+  INCREMENT_BADGE_COUNT:      "Increment Badge Count",
+  HIGHLIGHT_ICE_FIELD:        "Highlight ICE Field",
+  NAVIGATE_TO_EVENT_REG:      "Navigate To Event Reg",
+  // Sent by attendeeContact.js right before submitting the check-in form.
+  // background.js arms a one-shot redirect that fires when the resulting
+  // eventRegDetails navigation commits — forcing the volunteer back to the
+  // account search so the next check-in starts from a fresh lookup.
+  ARM_POST_CHECKIN_REDIRECT:  "Arm Post Check-In Redirect",
 };
 
 // ── CHROME.STORAGE.LOCAL KEY NAMES ───────────────────────────────────────

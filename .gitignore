@@ -16,4 +16,11 @@ Thumbs.db
 
 # ── Node (if anyone uses npm tools locally) ────────────────────────────
 node_modules/
-npm-debug.logS
+npm-debug.log
+
+# ── Playwright test harness ────────────────────────────────────────────
+.env
+tests/.auth/
+tests/.userdata/
+test-results/
+playwright-report/

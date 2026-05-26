@@ -1,0 +1,22 @@
+{
+  "name": "convergence-checkin-extension-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Playwright harness for the CONvergence Check-In Chrome extension. The extension itself ships as plain JS in the repo root; this package.json exists only for local test tooling.",
+  "scripts": {
+    "test": "playwright test",
+    "test:list": "playwright test --list",
+    "test:smoke": "playwright test green-adult-clean",
+    "test:headed": "playwright test --headed",
+    "test:debug": "PWDEBUG=1 playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/chrome": "^0.1.42",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.10.0",
+    "dotenv": "^16.4.5",
+    "js-yaml": "^4.1.0",
+    "typescript": "^5.7.2"
+  }
+}

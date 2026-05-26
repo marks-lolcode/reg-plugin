@@ -243,6 +243,45 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
   }
 });
 
+// ── POST-CHECK-IN REDIRECT ─────────────────────────────────────────────
+//
+// attendeeContact.js fires ACTION.ARM_POST_CHECKIN_REDIRECT immediately
+// before clicking Neon's Submit button on a check-in. We record the tabId
+// here, then watch for the eventRegDetails.do navigation Neon triggers as
+// the form POST response. When it commits, we redirect that tab to the
+// account-search page so the volunteer always starts the next check-in
+// from a clean account lookup.
+//
+// Map state lives in memory only: the arm-to-fire window is sub-second and
+// the service worker stays alive across the webNavigation event. The 60 s
+// staleness guard covers the edge case where Submit silently fails and no
+// eventRegDetails navigation ever follows.
+
+const armedPostCheckin = new Map();  // tabId → armed-at timestamp (ms)
+const ARMED_REDIRECT_TTL_MS = 60_000;
+
+chrome.webNavigation.onCommitted.addListener((details) => {
+  if (details.frameId !== 0) return;
+
+  const armedTs = armedPostCheckin.get(details.tabId);
+  if (!armedTs) return;
+
+  armedPostCheckin.delete(details.tabId);
+  if (Date.now() - armedTs > ARMED_REDIRECT_TTL_MS) {
+    console.log(`background.js: armed redirect stale for tab ${details.tabId}, ignoring`);
+    return;
+  }
+
+  const target = `https://${CONFIG.neon.productionDomain}/np/admin/content/contentList.do`;
+  console.log(`background.js: post-check-in redirect tab ${details.tabId} → ${target}`);
+  chrome.tabs.update(details.tabId, { url: target });
+}, {
+  url: [{
+    hostEquals:   CONFIG.neon.productionDomain,
+    pathContains: "/np/admin/event/eventRegDetails.do",
+  }],
+});
+
 // ── WEB NAVIGATION FALLBACK ────────────────────────────────────────────
 
 /**
@@ -387,6 +426,16 @@ async function recordErrorInStorage(errorType, originalError, context = {}) {
  * the caller's callback may fire before storage actually updates.
  */
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.action === ACTION.ARM_POST_CHECKIN_REDIRECT) {
+    const tabId = sender?.tab?.id;
+    if (tabId != null) {
+      armedPostCheckin.set(tabId, Date.now());
+      console.log(`background.js: armed post-check-in redirect for tab ${tabId}`);
+    }
+    sendResponse({ ok: true });
+    return;
+  }
+
   if (message.type === "RECORD_REGISTRATION_ERROR") {
     recordErrorInStorage(message.errorType, message.originalError, message.context)
       .then(()  => sendResponse({ success: true }))
