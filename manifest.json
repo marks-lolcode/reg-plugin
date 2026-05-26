@@ -3,12 +3,20 @@
   "name": "CONvergence Check-In",
   "description": "Validates and processes CONvergence attendee check-ins via Neon CRM.",
   "author": "CONvergence IT — Matt Resong, Colleen Baltutis, Sean Berry, Mark Sauntry",
-  "version": "2026.1",
+  "version": "2026.2",
   "icons": {
     "48": "assets/wink-with-note-black-48.png",
     "16": "assets/wink-black-16.png"
   },
   "content_scripts": [
+    {
+      "matches": [
+        "https://ce.app.neoncrm.com/admin/accounts/*",
+        "https://trial.z2systems.com/admin/accounts/*"
+      ],
+      "js": ["config.js", "js/constants.js", "js/accountPage.js"],
+      "run_at": "document_end"
+    },
     {
       "matches": [
         "https://ce.app.neoncrm.com/np/admin/event/attendeeEdit.do*",
@@ -34,10 +42,12 @@
       "run_at": "document_end"
     }
   ],
-  "permissions": ["storage", "tabs", "webNavigation"],
+  "permissions": ["storage", "tabs", "webNavigation", "scripting"],
   "host_permissions": [
     "https://ce.app.neoncrm.com/np/admin/event/*",
-    "https://trial.z2systems.com/np/admin/event/*"
+    "https://ce.app.neoncrm.com/admin/accounts/*",
+    "https://trial.z2systems.com/np/admin/event/*",
+    "https://trial.z2systems.com/admin/accounts/*"
   ],
   "action": {
     "default_icon": {

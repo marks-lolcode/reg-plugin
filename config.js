@@ -1,25 +1,48 @@
+// testing mgr pw: reggie
+
 // config.js
 // ╔══════════════════════════════════════════════════════════════════════╗
-// ║ CONvergence Check-In Extension — ANNUAL CONFIGURATION               ║
+// ║ CONvergence Check-In Extension — ANNUAL CONFIGURATION                ║
 // ║                                                                      ║
-// ║ This is the ONLY file that needs to be edited each year.            ║
-// ║ Search for "UPDATE EACH YEAR" to find every value that changes.     ║
+// ║ This is the ONLY file that needs to be edited each year.             ║
+// ║ Search for "UPDATE EACH YEAR" to find every value that changes.      ║
 // ║                                                                      ║
-// ║ After changing the password, regenerate the hash using:             ║
-// ║ tools/generate-password-hash.html (open locally in Chrome only)     ║
+// ║ After changing the password, regenerate the hash using:              ║
+// ║ tools/generate-password-hash.html (open locally in Chrome only)      ║
 // ╚══════════════════════════════════════════════════════════════════════╝
 
 const CONFIG = {
 
-  // ── EVENT IDs ────────────────────────────────────────────────────────
-  // How to find the current event ID:
+  // ── EVENT NAMES ──────────────────────────────────────────────────────
+  // The extension validates which event a registration belongs to by
+  // matching the event name shown on the Neon page against these arrays.
+  //
+  // currentEventNames — the REAL con events for this year. Registrations
+  //   for any of these will be treated as valid for check-in.
+  //
+  // testEventNames — training / test events. Registrations for these are
+  //   also allowed (so you can practice the workflow), but they should
+  //   NEVER include a real CONvergence year event.
+  //
+  // How to find the current event NAME:
   // 1. Log into Neon CRM and navigate to the current CONvergence event
-  // 2. Look at the URL — find the number after "eventId=" or "query.eventId="
-  // 3. Paste that number as currentEventId below
+  // 2. Copy the event name EXACTLY as it appears on the event page
+  // 3. Paste it into currentEventNames below, one entry per event
   //
   event: {
-    currentEventId: "248",   // ← UPDATE EACH YEAR
-    testEventId:    "142",   // ← CONvergence Training Event — do not change
+    // UPDATE EACH YEAR: Replace these with the actual event names from Neon
+    currentEventNames: [
+      "CONvergence 2026: The Geek in the Machine",
+      "CONvergence 2026 Dealers Spaces",
+    ],
+    testEventNames: [
+      // "Testing Tickets",
+      // "Testing Single Ticket Per Registration",
+      // "Testing Family",
+      // "TEST ONLY",
+      // "Test NextGen",
+      "CONvergence Example For Training Only",
+    ],
   },
 
   // ── NEON CRM DOMAINS ─────────────────────────────────────────────────
@@ -41,10 +64,14 @@ const CONFIG = {
   //   requiresAgeCheck — if true, popup shows age verification reminder
   //                      and staff must verify ID against legal name
   ticketTypes: [
-    { nameIncludes: "Adult", ticketLabel: "Adult", badgeImage: "ADULT.tif", requiresAgeCheck: true  },
-    { nameIncludes: "Teen",  ticketLabel: "Teen",  badgeImage: "TEEN.tif",  requiresAgeCheck: false },
-    { nameIncludes: "Youth", ticketLabel: "Youth", badgeImage: "CHILD.tif", requiresAgeCheck: false },
-    { nameIncludes: "Child", ticketLabel: "Child", badgeImage: "KID.tif",   requiresAgeCheck: false },
+    { nameIncludes: "Adult",  ticketLabel: "Adult",  badgeImage: "ADULT.tif",  requiresAgeCheck: true  },
+    { nameIncludes: "Teen",   ticketLabel: "Teen",   badgeImage: "TEEN.tif",   requiresAgeCheck: false },
+    { nameIncludes: "Youth",  ticketLabel: "Youth",  badgeImage: "CHILD.tif",  requiresAgeCheck: false },
+    { nameIncludes: "Child",  ticketLabel: "Child",  badgeImage: "KID.tif",    requiresAgeCheck: false },
+    // Dealer Spaces registrations have no "Event Admission" ticket row on the page.
+    // nameIncludes: "" matches when readTicketType() returns "" (no row found).
+    // This prevents dealer attendees from being flagged as UNKNOWN_TICKET.
+    { nameIncludes: "",       ticketLabel: "Dealer", badgeImage: "DEALER.tif", requiresAgeCheck: true  },
   ],
 
   // ── AGE VERIFICATION ─────────────────────────────────────────────────
@@ -64,42 +91,40 @@ const CONFIG = {
     "Sunday":   0,
   },
 
-  // ── NEON ATTENDEE FORM FIELD INDEXES ─────────────────────────────────
-  // Neon stores custom fields as attendee.customDataList[N].value
-  // These index numbers were verified against the live Neon form in 2026.
+  // ── NEON ATTENDEE FORM FIELD LABELS ──────────────────────────────────
+  // The extension finds custom fields dynamically by matching label text
+  // (substring match). If Neon renames a label, update the matching value
+  // below.
   //
-  // IF FIELDS STOP WORKING: Go to the AttendeeEdit page, open DevTools
-  // Console, and run the diagnostic in tools/find-field-indexes.html
-  // to rediscover the correct index for each field. Then update below.
+  // ⚠ Three different fields all use the label "HOLD". The extension
+  //   resolves these by position (first HOLD = registration, second = art
+  //   show, third = operations). If Neon adds or removes HOLD-labeled
+  //   fields, this assumption may break.
   //
-  // ⚠ Do NOT change these unless Neon has reorganized their custom fields.
-  //
-  fieldIndexes: {
-    registrationHold:    0,  // checkbox — "Registration Hold - Do Not Release"
-    artShowHold:         1,  // checkbox — "Art Show Hold - Do Not Release"
-    operationsHold:      2,  // checkbox — "Operations Hold - Do Not Release"
-    // index 3 — "Guest Of Badge" checkbox, not used in check-in logic
-    preferredName:       4,  // text — "Preferred Name"
-    // index 5 — "Pronouns", not used in check-in logic
-    nonTransferableName: 6,  // text — "Non-Transferable First and Last Name"
-    // index 7 — "Badge Name", not used in check-in logic
-    // index 8 — "Volunteering" checkbox, not used in check-in logic
-    activeBadgeCount:    9,  // text — "Number of Active Badges"
-    iceContact:         18,  // text — "In Case Of Emergency (Name and Phone)"
-    // Pickup slots — each entry is a [dateIndex, timeIndex] pair
-    pickupSlots: [
-      [10, 11],  // Pickup Date 1 / Pickup Time 1
-      [12, 13],  // Pickup Date 2 / Pickup Time 2
-      [14, 15],  // Pickup Date 3 / Pickup Time 3
-      [16, 17],  // Pickup Date 4 / Pickup Time 4
-    ],
+  fieldLabels: {
+    registrationHold:    "HOLD",
+    artShowHold:         "HOLD",
+    operationsHold:      "HOLD",
+    iceContact:          "In Case Of Emergency",
+    preferredName:       "Preferred Name",
+    nonTransferableName: "Non-Transferable First and Last Name",
+    activeBadgeCount:    "Number of Active Badges",
+    pickupDateLabel:     "Pickup Date",
+    pickupTimeLabel:     "Pickup Time",
   },
+
+  // ── REQUIRED CHECK-IN FIELDS ─────────────────────────────────────────
+  // Fields that must be non-empty before check-in can proceed.
+  // labelText must match (or be a substring of) the field's label on the form.
+  //
+  requiredFields: [
+    { labelText: "In Case Of Emergency" },
+  ],
 
   // ── HOLD FIELD MESSAGES ──────────────────────────────────────────────
   // Staff-facing messages when a hold is active.
   // Each hold entry has a title (shown bold in popup) and body (resolution instructions).
   // Order must match: [regHold, artShowHold, opsHold]
-  // Update message text here if instructions to staff change.
   //
   holdMessages: [
     { title: "Registration Hold", body: "Review notes on account or contact Registration Head.\nDo not release badge." },
@@ -107,14 +132,16 @@ const CONFIG = {
     { title: "Operations Hold",   body: "Direct the attendee to Operations.\nDo not release badge." },
   ],
 
-  // ── REQUIRED CHECK-IN FIELDS (Emergency Contact / ICE) ───────────────
-  // Fields that must be non-empty before check-in can proceed.
-  // labelText: shown to staff when the field is empty.
-  // index: customDataList index — verified against live form 2026.
+  // ── ATTENDEE PAGE MESSAGES ───────────────────────────────────────────
+  // Staff-facing messages shown in the popup on the AttendeeEdit page.
   //
-  requiredFields: [
-    { labelText: "In Case Of Emergency (Name and Phone)", index: 18 },
-  ],
+  attendeeMessages: {
+    missingIce:      "MISSING EMERGENCY CONTACT\nPlease ask the attendee for their emergency contact information.\nFill it in on the form, then click Re-check.",
+    ageVerification: "AGE VERIFICATION REQUIRED\nVerify ID matches legal name. Attendee must be {age} or older (DOB before {cutoff}).",
+    alreadyIssued:   "ALREADY ISSUED\nThis badge was already issued. Please send attendee to Help Desk.",
+    nameMismatch:    "NAME MISMATCH\nBadge was issued to a different person.\nPlease send attendee to Help Desk.",
+    noAccountId:     "NO ACCOUNT ID\nPlease direct attendee to Help Desk.",
+  },
 
   // ── MANAGEMENT OVERRIDE PASSWORD ─────────────────────────────────────
   // Allows Help Desk staff to proceed past a red (blocked) status.
@@ -129,7 +156,7 @@ const CONFIG = {
   // 3. Copy the hash and paste it below, replacing the old value
   // 4. Share the real password with Help Desk staff verbally or via a
   //    password manager — not GitHub, not email, not Slack
-  managementPasswordHash: "9c9487bdae4a2c3a76f8dcf5357e0793239d8742499340e83e0814130b6ccdee",  // ← UPDATE EACH YEAR
+  managementPasswordHash: "b1cc53f5f6e8209902436bff13802205f4f0fa16363201e8fb81d7131ead9140",  // ← UPDATE EACH YEAR
 
   // ── CONDITION DISPLAY ORDER ──────────────────────────────────────────
   // Controls the order that blocking/warning conditions appear in the popup.
@@ -150,6 +177,7 @@ const CONFIG = {
     { key: "notPaid",         fixableOnAttendeePage: false },
     { key: "alreadyIssued",   fixableOnAttendeePage: false },
     { key: "wrongYear",       fixableOnAttendeePage: false },
+    { key: "wrongEvent",      fixableOnAttendeePage: false },
     { key: "incorrectDay",    fixableOnAttendeePage: false },
     { key: "unknownTicket",   fixableOnAttendeePage: false },
     { key: "noAccountId",     fixableOnAttendeePage: false },

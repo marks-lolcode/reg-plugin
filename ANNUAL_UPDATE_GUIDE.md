@@ -1,3 +1,6 @@
+testing manager pw is "reggie"
+
+
 # CONvergence Check-In Extension — Annual Update Guide
 
 This guide walks through every change needed to prepare the extension for
@@ -5,7 +8,7 @@ a new convention year. You will need access to the GitHub repository and
 to Neon CRM.
 
 **You do not need to be a programmer to do this.**
-Every change is in one file — `config.js` — and each change is clearly marked.
+Most changes are in one file — `config.js` — and each change is clearly marked.
 
 ---
 
@@ -15,19 +18,22 @@ You will need:
 - Access to the GitHub repository
 - Access to Neon CRM (to look up the event ID)
 - The new Management Override password (decided by Registration leadership)
-- About 20 minutes
+- About 30 minutes
 
 ---
 
-## Step 1 — Find This Year's Event ID in Neon
+## Step 1 — Find This Year's Event ID(s) in Neon
 
 1. Log into Neon CRM
-2. Go to **Events** and find this year's CONvergence event
-3. Click on the event to open it
+2. Go to **Events** and find this year's CONvergence event(s)
+3. Click on each event to open it
 4. Look at the URL in your browser's address bar
-5. Find the number after `eventId=` — for example:
+5. Find the number after `id=` — for example:
    `...eventRegDetails.do?id=**312**...`
-6. Write this number down — you will need it in Step 2
+6. Write each number down — you will need them in Step 2
+
+There may be more than one event ID for the current year (e.g. main event
+and dealer spaces). Collect all of them.
 
 ---
 
@@ -40,23 +46,35 @@ to update. Here is each one:
 
 ---
 
-### 2a. Event ID
+### 2a. Event ID(s)
 
 Find this section:
 ```javascript
 event: {
-  currentEventId: "248",   // ← UPDATE EACH YEAR
-  testEventId:    "142",   // ← CONvergence Training Event — do not change
+  currentEventId: [     // ← UPDATE EACH YEAR
+    "312",              // CONvergence 2026 — Main event
+  ],
+  otherEventIds: [
+    "142",  // CONvergence Training Event
+    ...
+  ],
 },
 ```
 
-Replace `"248"` with the event ID you found in Step 1.
-Leave `testEventId` alone — it is the training event and never changes.
+Replace the entries inside `currentEventId: [...]` with this year's event IDs.
+Add one line per event, with a comment describing it.
 
-**Example:** If this year's event ID is 312, change it to:
+**Example:** If this year has a main event (ID 400) and a dealer event (ID 401):
 ```javascript
-currentEventId: "312",
+currentEventId: [
+  "400",  // CONvergence 2027 — Main event
+  "401",  // CONvergence 2027 — Dealer Spaces
+],
 ```
+
+Leave `otherEventIds` alone — those are training/test events and do not change year to year.
+You may add last year's main event ID to `otherEventIds` if you want old registrations
+to still pass the year check during testing.
 
 ---
 
@@ -126,7 +144,54 @@ to match a word that does appear in the new name.
 
 ---
 
-## Step 3 — Update the Version Number in manifest.json
+## Step 3 — Verify Field Indexes
+
+Neon occasionally reorganizes its custom fields. If the indexes have changed,
+the extension will read and write the wrong fields at check-in.
+
+**To verify the indexes:**
+
+1. Log into Neon and open any attendee's AttendeeEdit page
+2. Open **DevTools** in Chrome: press `F12` or right-click → **Inspect**
+3. Click the **Console** tab
+4. Paste and run this code:
+
+```javascript
+document.querySelectorAll('[name^="attendee.customDataList"]').forEach((el, i) => {
+  const name = el.getAttribute('name');
+  const idx = name.match(/\[(\d+)\]/)?.[1];
+  const val = el.value || el.checked || '';
+  console.log(`[${idx}] ${name} = "${val}"`);
+});
+```
+
+5. Compare the output to the `fieldIndexes` section in `config.js`:
+
+```javascript
+fieldIndexes: {
+  registrationHold:    0,
+  artShowHold:         1,
+  operationsHold:      2,
+  iceContact:          4,
+  preferredName:       6,
+  nonTransferableName: 10,
+  activeBadgeCount:    11,
+  pickupSlots: [
+    [12, 13],
+    [14, 15],
+    [16, 17],
+    [18, 19],
+  ],
+},
+```
+
+If the indexes in the console output do not match, update `config.js` → `fieldIndexes`
+to reflect the new positions. Also update `requiredFields` if the ICE index changed.
+Contact IT if you are unsure.
+
+---
+
+## Step 4 — Update the Version Number in manifest.json
 
 Open `manifest.json` in a text editor. Find:
 ```json
@@ -136,17 +201,17 @@ Update the year to the current year.
 
 ---
 
-## Step 4 — Commit the Changes to GitHub
+## Step 5 — Commit the Changes to GitHub
 
 1. Save both files (`config.js` and `manifest.json`)
 2. Commit the changes to GitHub with a message like:
-   `Annual update for CONvergence 2026`
+   `Annual update for CONvergence 2027`
 3. Do **not** commit `tools/generate-password-hash.html` — it is excluded
    by `.gitignore` for security reasons
 
 ---
 
-## Step 5 — Test Before Con
+## Step 6 — Test Before Con
 
 Before the convention weekend:
 
@@ -171,7 +236,8 @@ The most common problems after an annual update:
 | Extension shows "Wrong Year" for all attendees | Event ID not updated or wrong ID entered | Re-check the event ID in Neon |
 | Management Override password not accepted | Hash not updated, or wrong password shared | Regenerate hash with correct password |
 | Ticket type shows as "Unknown" | Neon renamed a ticket type | Update `nameIncludes` to match new name |
-| Fields not writing at check-in | Neon reorganized custom fields | Contact IT — field indexes need updating |
+| Fields not writing at check-in | Neon reorganized custom fields | Run the Step 3 diagnostic and update `fieldIndexes` |
+| Wrong data showing in popup (e.g. wrong name) | Neon reorganized custom fields | Run the Step 3 diagnostic and update `fieldIndexes` |
 
 ---
 
@@ -179,8 +245,7 @@ The most common problems after an annual update:
 
 Unless IT has specifically told you to:
 
-- Do not change `testEventId` — this is the permanent training event
-- Do not change anything in `fieldIndexes` — these are verified field positions
+- Do not change `otherEventIds` — these are permanent training/test events
 - Do not change `holdMessages` order — it must match the field index order
 - Do not change anything in `js/` files — these are the code files
 
