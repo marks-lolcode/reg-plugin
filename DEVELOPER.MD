@@ -35,11 +35,93 @@ attendeeContact.js writes fields to Neon form and clicks the save button
 ### Content script injection
 
 Content scripts are injected by the manifest based on URL patterns. They
-are plain (non-module) scripts. The manifest lists `config.js` and
-`js/constants.js` ahead of every content script so that `CONFIG`, `STATE`,
-`ACTION`, `STORAGE_KEY`, `CONDITION`, `EVENT_MATCH`, `REG_STATUS`,
-`ERROR_MESSAGES`, and the `dbg()` helper are available as globals. Do
-not add `import` / `export` statements.
+are plain (non-module) scripts. Every content_scripts block loads these
+files in order before the per-page script:
+
+1. `shared/js/constants-base.js` -- framework-level globals: `STATE`,
+   `ERROR_MESSAGES`, `dbg()`, and the icon-machinery `STORAGE_KEY` entries
+   (`MANAGEMENT_OVERRIDE`, `PENDING_ICON_UPDATE`, `REGISTRATION_ERROR`).
+2. `config.js` -- annual settings, including `CONFIG.debug` (consumed by `dbg()`).
+3. `js/constants.js` -- app-specific globals: `REG_STATUS`, `ACTION`,
+   `CONDITION`, `EVENT_MATCH`. Also mutates `STORAGE_KEY` to add app keys
+   like `ATTENDEE`, `REGISTRATIONS`, `ACCOUNT`, etc.
+
+Do not add `import` / `export` statements. The same load order is mirrored
+in `popup.html` script tags, `extension_options_page.html` script tags, and
+`importScripts(...)` at the top of `js/background.js`.
+
+The `shared/` folder exists to keep framework-level helpers separate from
+app-specific code so they're easy to reuse if a second extension mode is
+added later. It is internal organization, not a cross-extension boundary.
+
+### Extension modes
+
+The extension ships two flows in one install, gated by `CONFIG.mode`
+(default) and the user-selectable `STORAGE_KEY.EXTENSION_MODE` value
+(set on the options page; overrides the default once chosen):
+
+- `EXTENSION_MODE.REG`   -- badge check-in. The original flow; everything
+  in `js/popup.js`, `js/attendeeContact.js`, etc. is reg-mode behavior.
+- `EXTENSION_MODE.MERCH` -- merchandise pickup. Volunteer confirms which
+  items in `CONFIG.merch.items` an attendee is collecting; the extension
+  writes a date/time into the matching pickup field on the attendee form
+  and redirects to the dashboard. Items can be sourced from a Neon
+  custom field or a Neon session; see `CONFIG.merch` in `config.js`.
+
+`js/popup.js` reads the mode at the top of `displayPopup()` and, when
+merch mode is active, calls `displayMerchPopup()` (defined in
+`js/popup-merch.js`) -- the reg flow is not invoked.
+
+Content scripts are mode-aware:
+- `js/attendeeContact.js` (reg-mode owner of attendeeEdit) returns early
+  from its IIFE when mode is MERCH, leaving `buildFieldIndex()` and
+  `buildCustomFieldLabelMap()` defined as content-script globals for
+  `js/merch-attendee.js` to call.
+- `js/merch-attendee.js` (merch-mode owner of attendeeEdit) returns early
+  when mode is REG. When MERCH, it scrapes per-item ordered/picked-up
+  state and writes `STORAGE_KEY.ATTENDEE_MERCH`.
+- `js/registrations.js` reads mode once on page load; in MERCH mode it
+  skips badge-eligibility validation and instead attaches a per-attendee
+  `merch` summary array using the same `readField()` helper the reg flow
+  uses for ICE/holds/etc.
+
+### Merchandise pickup data model
+
+`CONFIG.merch.items` is the year's merch catalog (see `config.js`). Each
+entry declares how to detect whether an attendee ordered the item and
+where to write pickup date/time:
+
+```js
+{
+  name: "T-Shirt",                          // shown in popup
+  source: {
+    type: "customField",                    // only customField supported in Phase B2
+    label: "Preorder your 2026 T-shirt",    // substring of the source field's label
+    matchMode: "anyExcept",                 // "anyExcept" or "substring"
+    notOrderedValue: "...",                 // (anyExcept) ordered if value differs
+    // matchValue: "..."                    // (substring) ordered if value contains
+  },
+  pickupFieldLabel: "T-Shirt Picked Up",    // substring of the pickup field's label
+}
+```
+
+When `matchMode === "anyExcept"`, the field's own value IS the variant
+(e.g., the T-shirt size). When `matchMode === "substring"`, there is no
+variant.
+
+`STORAGE_KEY.ATTENDEE_MERCH` shape (written by `js/merch-attendee.js`,
+read by `js/popup-merch.js`):
+
+```js
+{
+  accountId, attendeeId, legalName, preferredName,
+  items: [
+    { name, ordered: bool, variant: string|null,
+      alreadyPickedUp: bool, pickedUpAt: string|null },
+    ...
+  ],
+}
+```
 
 | URL pattern | Script injected |
 |---|---|
@@ -54,13 +136,18 @@ not add `import` / `export` statements.
 
 | File | Purpose |
 |---|---|
-| `config.js` | All annual configuration — event IDs, field indexes, ticket rules |
-| `js/constants.js` | Shared string constants (states, action names, storage keys) |
-| `js/background.js` | Service worker — page load listeners and icon updates |
+| `config.js` | All annual configuration -- event IDs, field indexes, ticket rules |
+| `shared/js/constants-base.js` | Framework constants reusable across Neon helper modes (STATE, ERROR_MESSAGES, icon-machinery STORAGE_KEY entries, dbg) |
+| `shared/js/background-core.js` | Generic MV3 icon cache + setter + worstStateFromRows helper |
+| `shared/js/crypto.js` | SHA-256 hashPassword used by the options page |
+| `js/constants.js` | App-specific constants (REG_STATUS, ACTION, CONDITION, EVENT_MATCH) and STORAGE_KEY extensions |
+| `js/background.js` | Service worker -- page load listeners, icon updates, post-check-in redirect, error capture |
 | `js/attendeeContact.js` | Scrapes AttendeeEdit page, validates, writes check-in data |
 | `js/registrations.js` | Scrapes EventRegDetails page, validates registrants |
-| `js/popup.js` | Popup UI — renders views, handles check-in action |
-| `js/options.js` | Options page — saves workstation ID and override state |
+| `js/popup.js` | Reg-mode popup UI + top-level entry point. Reads `STORAGE_KEY.EXTENSION_MODE` first; if it's `"merch"`, delegates to `displayMerchPopup()` and skips the reg flow entirely. |
+| `js/popup-merch.js` | Merch-mode popup UI. On eventreg: attendee list with merch summary + Review Merch button per row. On attendeeEdit: checkbox per ordered item (already-picked-up items disabled), Confirm Pickup submit. |
+| `js/merch-attendee.js` | Merch-mode content script for attendeeEdit pages. Reads each `CONFIG.merch.items[]` entry by label substring, evaluates the matcher to decide `ordered`, reads each pickup field to decide `alreadyPickedUp`. Stores result in `STORAGE_KEY.ATTENDEE_MERCH`. On `ACTION.WRITE_MERCH_PICKUP`, writes the current date/time into the matching pickup field for each newly-checked item, then arms the post-checkin redirect and clicks Save. |
+| `js/options.js` | Options page -- saves `EXTENSION_MODE` (reg/merch radio) and `MANAGEMENT_OVERRIDE` (password-gated boolean) |
 
 ---
 
@@ -126,8 +213,10 @@ update, the indexes may have changed. To map the new ones:
 The management override password is stored as a SHA-256 hex hash in
 `config.js`. The hash is generated by `tools/generate-password-hash.html`.
 
-The hashing is done in `js/options.js` using the browser's built-in
-`crypto.subtle.digest("SHA-256", ...)` — no external libraries.
+The hashing is done by `hashPassword()` in `shared/js/crypto.js` using the
+browser's built-in `crypto.subtle.digest("SHA-256", ...)` -- no external
+libraries. `js/options.js` calls it after loading the script in
+`extension_options_page.html`.
 
 **Do not commit `tools/generate-password-hash.html` to GitHub.** It is
 listed in `.gitignore`. If it appears in a commit, remove it.

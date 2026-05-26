@@ -62,7 +62,16 @@ async function displayPopup() {
 
   const activeTab = await getActiveTab();
   const url = activeTab?.url ?? "";
-  console.log("popup.js: displayPopup active tab url =", url);
+
+  // Mode dispatch -- merch mode delegates to popup-merch.js, leaving the
+  // registration flow below untouched. Options page sets the mode; default
+  // is REG so existing installs keep their current behavior.
+  const modeResult = await chrome.storage.local.get({ [STORAGE_KEY.EXTENSION_MODE]: EXTENSION_MODE.REG });
+  const mode       = modeResult[STORAGE_KEY.EXTENSION_MODE];
+  console.log("popup.js: displayPopup mode =", mode, "url =", url);
+  if (mode === EXTENSION_MODE.MERCH) {
+    return displayMerchPopup(activeTab, url);
+  }
 
   if (url.includes("/admin/accounts/")) {
     // Account overview page — just shows notes and a "Proceed" button
@@ -809,13 +818,11 @@ function showConfirmation(attendee) {
   const body = document.body;
   body.innerHTML = "";
   const screen = el("div", { className: "confirm-screen" });
-  screen.appendChild(el("div", { className: "confirm-icon",   textContent: "✓" }));
-  screen.appendChild(el("div", { className: "confirm-title",  textContent: "Check-In Complete" }));
-  screen.appendChild(el("div", { className: "confirm-name",   textContent: attendee.preferredName || attendee.legalName }));
-  screen.appendChild(el("div", { className: "confirm-badge",  textContent: `Badge: ${attendee.attendeeId}` }));
-  screen.appendChild(el("div", { className: "confirm-detail", textContent: "Hand badge to attendee.\nCSV sent to printer queue." }));
+  screen.appendChild(el("div", { className: "confirm-icon",  textContent: "✓" }));
+  screen.appendChild(el("div", { className: "confirm-title", textContent: "Check-In Complete" }));
+  screen.appendChild(el("div", { className: "confirm-name",  textContent: attendee.preferredName || attendee.legalName }));
   body.appendChild(screen);
-  setTimeout(() => window.close(), 3000);
+  setTimeout(() => window.close(), 1000);
 }
 
 function showError(message) {

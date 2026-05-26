@@ -1,6 +1,6 @@
 // js/background.js
 // ============================================================================
-// CONvergence Check-In Extension — Service Worker
+// CONvergence Check-In Extension -- Service Worker
 // ============================================================================
 //
 // This is the Manifest V3 service worker. It runs in the background and is
@@ -14,153 +14,23 @@
 //      chrome.storage.local so the popup can display them.
 //
 // importScripts paths are relative to THIS file's location (js/background.js):
-//   "../config.js"  → extension root/config.js
-//   "constants.js"  → js/constants.js  (same folder as this file)
+//   "../shared/js/constants-base.js"   -> repo root/shared/js/constants-base.js
+//                                          (provides STATE, the icon-machinery
+//                                           STORAGE_KEY entries, ERROR_MESSAGES, dbg)
+//   "../config.js"                     -> repo root/config.js
+//   "constants.js"                     -> js/constants.js (same folder; mutates
+//                                          STORAGE_KEY with app-specific keys)
+//   "../shared/js/background-core.js"  -> generic icon cache + setIcon +
+//                                          worstStateFromRows. Kicks off icon
+//                                          cache build as a side effect.
 // ============================================================================
 
-importScripts("../config.js", "constants.js");
-
-// ── ICON SIZE LIST ─────────────────────────────────────────────────────
-// Chrome can use a 19px icon for normal displays and a 38px icon for
-// high-DPI displays. We generate both for every (state, override) combo.
-const ICON_SIZES = [19, 38];
-
-// ── ICON CACHES ────────────────────────────────────────────────────────
-//
-// normalIconCache["state-size"]   → ImageData for the plain colored icon
-// overrideIconCache["state-size"] → ImageData for the icon with "M" badge
-//
-// Both caches use ImageData so that chrome.action.setIcon always receives
-// { imageData } rather than { path }. Path-based setIcon silently fails
-// from a MV3 service worker context in some Chrome versions; ImageData
-// works reliably in both cases.
-const normalIconCache   = {};
-const overrideIconCache = {};
-
-// Set to `true` once generateIconCaches() has populated the caches.
-// setIcon() checks this flag before trying to read from the caches —
-// if it's still false the call is skipped (and logged).
-let iconCachesReady = false;
-
-// ── ICON CACHE GENERATION ──────────────────────────────────────────────
-
-/**
- * Loads every colored icon PNG and stores it as ImageData in normalIconCache.
- * Also generates an "M" badge variant for each icon and stores it in
- * overrideIconCache. This runs once at service-worker startup.
- *
- * If individual icon files fail to load, the loop continues so that any
- * remaining icons still get cached and the extension can fall back to
- * showing them where possible.
- */
-async function generateIconCaches() {
-  for (const state of [STATE.GREEN, STATE.YELLOW, STATE.RED]) {
-    for (const size of ICON_SIZES) {
-      try {
-        const url      = chrome.runtime.getURL(`assets/wink-${state}-${size}.png`);
-        const response = await fetch(url);
-        const blob     = await response.blob();
-        const bitmap   = await createImageBitmap(blob);
-
-        const canvas = new OffscreenCanvas(size, size);
-        const ctx    = canvas.getContext("2d");
-        ctx.drawImage(bitmap, 0, 0, size, size);
-
-        // ── Plain icon ──
-        normalIconCache[`${state}-${size}`] = ctx.getImageData(0, 0, size, size);
-
-        // ── Override icon: draw "M" badge on top ──
-        const badgeRadius = Math.max(4, Math.round(size * 0.28));
-        const badgeX      = size - badgeRadius - 1;
-        const badgeY      = size - badgeRadius - 1;
-
-        ctx.beginPath();
-        ctx.arc(badgeX, badgeY, badgeRadius, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(20, 20, 20, 0.92)";
-        ctx.fill();
-
-        const fontSize = Math.max(5, Math.round(badgeRadius * 1.2));
-        ctx.font         = `bold ${fontSize}px sans-serif`;
-        ctx.fillStyle    = "#ffffff";
-        ctx.textAlign    = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("M", badgeX, badgeY + 1);
-
-        overrideIconCache[`${state}-${size}`] = ctx.getImageData(0, 0, size, size);
-
-        console.log(`background.js: icon cached: ${state}-${size}`);
-      } catch (err) {
-        console.error(`background.js: failed to cache icon ${state}-${size}:`, err);
-      }
-    }
-  }
-  // NOTE: do NOT assign iconCachesReady here. The startup block below
-  // sets it to true *after* this async function resolves so that callers
-  // can rely on it being a single, well-defined transition.
-}
-
-// ── ICON SETTER ────────────────────────────────────────────────────────
-
-/**
- * Sets the extension icon for a given tab using pre-generated ImageData.
- * Always uses imageData (never path strings) to avoid a Chrome MV3 service
- * worker bug where path-based setIcon silently fails.
- *
- * @param {number} tabId
- * @param {string} state - STATE.GREEN | STATE.YELLOW | STATE.RED
- */
-async function setIcon(tabId, state) {
-  if (!iconCachesReady) {
-    console.warn("background.js: icon caches not ready yet, skipping setIcon");
-    return;
-  }
-  const overrideResult     = await chrome.storage.local.get(STORAGE_KEY.MANAGEMENT_OVERRIDE);
-  const managementOverride = overrideResult[STORAGE_KEY.MANAGEMENT_OVERRIDE] ?? false;
-
-  const cache     = managementOverride ? overrideIconCache : normalIconCache;
-  const imageData = {};
-
-  for (const size of ICON_SIZES) {
-    const cached = cache[`${state}-${size}`];
-    if (cached) imageData[size] = cached;
-  }
-
-  if (Object.keys(imageData).length > 0) {
-    await chrome.action.setIcon({ tabId, imageData });
-    console.log(`background.js: icon set → tab ${tabId} state=${state} override=${managementOverride}`);
-    return;
-  }
-
-  console.error(`background.js: icon cache empty for state=${state}, cannot set icon`);
-}
-
-// ── STARTUP ────────────────────────────────────────────────────────────
-// Trigger the icon cache build at service-worker load. iconCachesReady
-// flips to true only after every icon (or its best-effort placeholder)
-// has been processed.
-generateIconCaches().then(() => {
-  iconCachesReady = true;
-  console.log("background.js: all icon caches ready");
-});
-
-// ── HELPER: COMPUTE WORST STATE FROM REGISTRATION ROWS ─────────────────
-
-/**
- * Given an array of attendee rows (each with a `state` field), returns
- * the "worst" state for icon display:
- *   all red       → RED
- *   any yellow    → YELLOW
- *   otherwise     → GREEN
- *
- * Extracted so the same rule is applied to both the storage-change
- * handler and the webNavigation fallback below.
- */
-function worstStateFromRows(rows) {
-  if (!Array.isArray(rows) || rows.length === 0) return STATE.GREEN;
-  if (rows.every(r => r.state === STATE.RED))    return STATE.RED;
-  if (rows.some(r => r.state === STATE.YELLOW))  return STATE.YELLOW;
-  return STATE.GREEN;
-}
+importScripts(
+  "../shared/js/constants-base.js",
+  "../config.js",
+  "constants.js",
+  "../shared/js/background-core.js"
+);
 
 // ── STORAGE CHANGE LISTENER ────────────────────────────────────────────
 
@@ -212,7 +82,7 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
     }
   }
 
-  // ── Management override toggled — refresh icon for the active tab ──
+  // ── Management override toggled -- refresh icon for the active tab ──
   if (changes[STORAGE_KEY.MANAGEMENT_OVERRIDE]) {
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     const tab  = tabs?.[0];
@@ -296,7 +166,7 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
 
   const url = details.url ?? "";
 
-  // Non-content-script Neon pages — set green directly to acknowledge
+  // Non-content-script Neon pages -- set green directly to acknowledge
   // that we're "in Neon" even though we have nothing specific to evaluate.
   if (
     url.includes("neoncrm.com") &&
@@ -341,18 +211,18 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
 // Listens for error messages from content scripts and stores them in
 // chrome.storage.local for the popup to display.
 //
-// The user-friendly templates live in js/constants.js (ERROR_MESSAGES) so
-// that the service worker, content scripts, and popup all reference the
-// same table. importScripts("constants.js") at the top of this file makes
+// The user-friendly templates live in shared/js/constants-base.js
+// (ERROR_MESSAGES) so the service worker, content scripts, and popup all
+// reference the same table. importScripts at the top of this file makes
 // ERROR_MESSAGES available here as a global.
 
 /**
  * Persist an error record in chrome.storage.local under STORAGE_KEY.REGISTRATION_ERROR.
  * popup.js reads this key and renders an alert on the next popup open.
  *
- * @param {string} errorType    — one of the keys in ERROR_MESSAGES
- * @param {*}      originalError — Error object or string from the caller
- * @param {object} context       — optional debug data (accountId, etc.)
+ * @param {string} errorType    -- one of the keys in ERROR_MESSAGES
+ * @param {*}      originalError -- Error object or string from the caller
+ * @param {object} context       -- optional debug data (accountId, etc.)
  */
 async function recordErrorInStorage(errorType, originalError, context = {}) {
   const timestamp = Date.now();
@@ -384,7 +254,7 @@ async function recordErrorInStorage(errorType, originalError, context = {}) {
 /**
  * Message listener for RECORD_REGISTRATION_ERROR messages from content scripts.
  *
- * IMPORTANT: this listener is async — we MUST return true to keep the
+ * IMPORTANT: this listener is async -- we MUST return true to keep the
  * sendResponse channel open until the storage write completes, otherwise
  * the caller's callback may fire before storage actually updates.
  */

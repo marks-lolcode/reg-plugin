@@ -9,9 +9,11 @@ You do not need any coding experience to do this.
 
 - A laptop or desktop running **Google Chrome**
 - Access to the **CONvergence GitHub repository** where this extension lives
-- The **Workstation ID** for this computer (ask your Registration Head)
+- To know whether this workstation will be used for **Registration** (badge
+  check-in) or **Merchandise Pickup** (T-shirt / Souvenir Guide handout) --
+  ask your Registration Head
 - The **Management Override password** if this is a Help Desk workstation
-  (ask your Registration Head — do not look for it in the code)
+  (ask your Registration Head -- do not look for it in the code)
 
 ---
 
@@ -50,18 +52,25 @@ If you see any errors in red on the extensions page, stop and contact IT.
 
 ---
 
-## Step 4 — Set Your Workstation ID
+## Step 4 — Choose the Extension Mode
 
-Every computer at Registration needs a unique Workstation ID so that badge
-CSV files can be traced back to the correct station.
+The extension supports two flows in one install. Set the mode for this
+workstation once and leave it.
 
-1. Click the **Connie wink icon** in the Chrome toolbar
-2. Right-click the icon and choose **Options**
-   (or go to `chrome://extensions`, find the extension, and click **Details → Extension options**)
-3. Type your **Workstation ID** in the box (e.g. `REG-01`, `REG-02`, `HELPDESK`)
-   — ask your Registration Head if you are unsure what to use
-4. Click **Save Options**
-5. You should see "Options saved." confirm the save worked
+1. Right-click the **Connie wink icon** in the Chrome toolbar and choose
+   **Options** (or go to `chrome://extensions`, find the extension, and
+   click **Details → Extension options**)
+2. Under **Extension Mode** pick one:
+   - **Registration (badge check-in)** -- for normal Registration desk
+     workstations. This is the default and matches the behavior the
+     extension has always had.
+   - **Merchandise pickup** -- for workstations where volunteers hand out
+     pre-ordered merch (T-shirts, Souvenir Guides) and need to record the
+     pickup time on each attendee's record.
+3. Click **Save Options**. You should see "Options saved."
+
+If a workstation needs to switch roles mid-con, come back to this page and
+flip the radio -- no other changes needed.
 
 ---
 
@@ -83,13 +92,29 @@ process badges that would otherwise be blocked (e.g. reissues).
 
 ## Step 6 — Verify the Extension Is Working
 
+### For Registration mode workstations
+
 1. Log into Neon CRM in Chrome
 2. Navigate to any attendee's Event Registration page
 3. Click the dollar amount to open the registration details
 4. The Connie wink icon in the toolbar should turn **green**
-5. Click the icon — you should see a popup with attendee names listed
+5. Click the icon -- you should see a popup with attendee names listed
 
-If the icon does not change or the popup is empty, see `TROUBLESHOOTING.md`.
+### For Merchandise pickup mode workstations
+
+1. Log into Neon CRM in Chrome
+2. Open any test attendee from the training event (event ID 142)
+3. The Connie wink icon turns green
+4. Click the icon -- you should see a blue **MERCH MODE** banner at the
+   top of the popup, with the attendees listed and a "Review Merch" button
+   next to each one
+5. Click Review Merch on one attendee -- the popup should show a checkbox
+   for each merch item that attendee has ordered (already-picked-up items
+   appear checked and greyed)
+
+If the icon does not change or the popup is empty in either mode, see
+`TROUBLESHOOTING.md`. If you see the wrong flow (e.g. reg-style popup on
+a merch workstation), re-check the Mode setting in Step 4.
 
 ---
 
