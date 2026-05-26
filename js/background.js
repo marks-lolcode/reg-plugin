@@ -340,48 +340,11 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
 // ============================================================================
 // Listens for error messages from content scripts and stores them in
 // chrome.storage.local for the popup to display.
-
-/**
- * User-friendly error message templates indexed by error type. The
- * content script sends an `errorType` key; the matching template's
- * title/detail/action are stored alongside the raw debug info.
- *
- * Keeping the table inside background.js (instead of importing it from
- * registrationErrors.js) ensures the service worker has everything it
- * needs without depending on another script's load order.
- */
-const ERROR_MESSAGES = {
-  NO_VALID_EVENT: {
-    title: "No event found",
-    detail: "We couldn't locate your current event. Please make sure you're viewing the correct account page.",
-    action: "Try refreshing the page and clicking the extension icon again",
-  },
-  NO_SUCCEEDED_REGISTRATION: {
-    title: "No active registrations found",
-    detail: "This attendee doesn't have any confirmed registrations for the current event.",
-    action: "Verify the attendee is registered for this event in Neon",
-  },
-  NAVIGATION_FAILED: {
-    title: "Navigation error",
-    detail: "We couldn't navigate to the registration page automatically.",
-    action: "Navigate to the event registrations page manually and try again",
-  },
-  SCRIPT_INJECTION_FAILED: {
-    title: "Unable to read account data",
-    detail: "The extension encountered a technical issue reading the page.",
-    action: "Refresh the page and try clicking the extension icon again",
-  },
-  TIMEOUT: {
-    title: "Request took too long",
-    detail: "The page didn't load quickly enough. This can happen if you're on a slow connection.",
-    action: "Wait a moment and try again",
-  },
-  UNKNOWN_ERROR: {
-    title: "Something went wrong",
-    detail: "An unexpected error occurred while processing your request.",
-    action: "Try refreshing the page and try again. If the problem persists, contact IT",
-  },
-};
+//
+// The user-friendly templates live in js/constants.js (ERROR_MESSAGES) so
+// that the service worker, content scripts, and popup all reference the
+// same table. importScripts("constants.js") at the top of this file makes
+// ERROR_MESSAGES available here as a global.
 
 /**
  * Persist an error record in chrome.storage.local under STORAGE_KEY.REGISTRATION_ERROR.

@@ -34,12 +34,16 @@ attendeeContact.js writes fields to Neon form and clicks the save button
 
 ### Content script injection
 
-Content scripts are injected by the manifest based on URL patterns.
-Each script imports `config.js` and `constants.js` directly via ES module
-`import` statements — there is no global CONFIG variable.
+Content scripts are injected by the manifest based on URL patterns. They
+are plain (non-module) scripts. The manifest lists `config.js` and
+`js/constants.js` ahead of every content script so that `CONFIG`, `STATE`,
+`ACTION`, `STORAGE_KEY`, `CONDITION`, `EVENT_MATCH`, `REG_STATUS`,
+`ERROR_MESSAGES`, and the `dbg()` helper are available as globals. Do
+not add `import` / `export` statements.
 
 | URL pattern | Script injected |
 |---|---|
+| `.../admin/accounts/*` | `js/accountPage.js` |
 | `.../attendeeEdit.do*` | `js/attendeeContact.js` |
 | `.../contactSelect.do*` | `js/attendeeContact.js` |
 | `.../eventRegDetails.do*` | `js/registrations.js` |
@@ -108,12 +112,12 @@ All custom fields on the AttendeeEdit page use the pattern:
 ### If field indexes change
 
 If the extension stops reading or writing fields correctly after a Neon
-update, the indexes may have changed. Use the diagnostic tool:
+update, the indexes may have changed. To map the new ones:
 
-1. Open `tools/find-field-indexes.html` locally in Chrome
-2. Follow the instructions — it will give you console queries to run on
-   the live Neon AttendeeEdit page
-3. Update `config.js` → `fieldIndexes` with the new values
+1. Open the Neon AttendeeEdit page in Chrome and open DevTools → Console.
+2. Run `Array.from(document.querySelectorAll('[name^="attendee.customDataList"]')).map((el, i) => ({ index: i, name: el.name, label: el.closest('tr')?.querySelector('td:first-child')?.innerText?.trim() }))`.
+3. Match the labels you see against the table above and update
+   `config.js` → `fieldIndexes` with the new values.
 
 ---
 
@@ -146,17 +150,18 @@ a matching page finishes loading (via `background.js`).
 
 ### Field writes not working
 1. Verify the field index in `config.js` matches the live page
-2. Run the diagnostic in `tools/find-field-indexes.html`
+2. Re-map indexes using the DevTools snippet under "If field indexes change"
 3. Check the console for errors from `incrementBadge()` in `attendeeContact.js`
 
 ### Adding a new required field
-1. Find the field's `customDataList` index using the DevTools diagnostic
+1. Find the field's `customDataList` index using the DevTools snippet
+   under "If field indexes change"
 2. Add an entry to `config.js` → `requiredFields`
 3. Add a corresponding highlight case to `highlightICEField()` in
    `attendeeContact.js` if you want the "Show me the field" button to work
 
 ### Adding a new hold type
-1. Find the field's `customDataList` index using the DevTools diagnostic
+1. Find the field's `customDataList` index using the same DevTools snippet
 2. Add the index to `config.js` → `fieldIndexes` (name it clearly)
 3. Add the staff-facing message to `config.js` → `holdMessages`
    (order must match the hold indexes array in `attendeeContact.js`)
@@ -180,9 +185,7 @@ a matching page finishes loading (via `background.js`).
 
 ### `tools/generate-password-hash.html`
 Open locally in Chrome. Generates a SHA-256 hash of a password for use
-in `config.js`. Never commit this file to GitHub.
-
-### `tools/find-field-indexes.html`
-Open locally in Chrome. Provides copy-paste DevTools console queries to
-identify the `customDataList` index for any field on the Neon AttendeeEdit
-page. Use this whenever field writes stop working after a Neon update.
+in `config.js`. This file is gitignored (`.gitignore` line 6) — it lives
+on individual maintainers' machines and must not be committed. If you
+don't have a copy, regenerate the hash with this one-liner in DevTools:
+`crypto.subtle.digest("SHA-256", new TextEncoder().encode("yourPassword")).then(b => console.log(Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2,"0")).join("")))`.

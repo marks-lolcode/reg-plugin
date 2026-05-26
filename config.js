@@ -13,6 +13,12 @@
 
 const CONFIG = {
 
+  // ── DEBUG LOGGING ────────────────────────────────────────────────────
+  // Set true to enable verbose dbg() output across content scripts and
+  // the service worker. console.error / console.warn are unaffected.
+  // Leave false in production checkouts.
+  debug: false,
+
   // ── EVENT NAMES ──────────────────────────────────────────────────────
   // The extension validates which event a registration belongs to by
   // matching the event name shown on the Neon page against these arrays.

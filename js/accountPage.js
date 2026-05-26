@@ -288,6 +288,41 @@ function highlightHoldRows(holds, managementOverride) {
   }
 }
 
+// ── AUTO-CLICK HELPERS ──────────────────────────────────────────────────────
+
+// Neon has reordered the Attendees-table columns at least once. Discover
+// the columns we care about by their header text rather than relying on
+// positional indexes that silently drift.
+function findColumnIndexes(tableBody) {
+  const root = tableBody.closest(".el-table") ?? tableBody.parentElement;
+  const headerCells = root?.querySelectorAll(".el-table__header thead th") ?? [];
+  const map = {};
+  headerCells.forEach((th, i) => {
+    const label = th.textContent?.trim().toLowerCase() ?? "";
+    if (!label) return;
+    if (map.event  == null && label.includes("event"))  map.event  = i;
+    if (map.status == null && label.includes("status")) map.status = i;
+    if (map.amount == null && (label.includes("amount") || label.startsWith("$"))) map.amount = i;
+  });
+  return map;
+}
+
+// Yellow banner pinned to the top of the Neon page so the volunteer sees
+// when auto-navigate has given up. The popup itself is already closed by
+// the time these failure paths fire, so without this banner the failure
+// is silent.
+function showAutoNavFailureBanner(message) {
+  if (document.getElementById("cvg-autonav-failure")) return;
+  const bar = document.createElement("div");
+  bar.id = "cvg-autonav-failure";
+  bar.textContent = `CONvergence Check-In: ${message}`;
+  bar.style.cssText =
+    "position:fixed; top:0; left:0; right:0; z-index:99999; padding:10px 14px; " +
+    "background:#fff3cd; color:#7a5d00; border-bottom:2px solid #ffc107; " +
+    "font:14px/1.4 sans-serif; text-align:center;";
+  document.body.appendChild(bar);
+}
+
 // ── AUTO-CLICK: First SUCCEEDED registration on Attendees tab ───────────────
 
 /**
@@ -339,25 +374,31 @@ async function autoClickFirstSucceededRegistration() {
     const tableBody = document.querySelector("#accountEventAttendeesList .el-table__body");
     if (!tableBody) {
       console.warn("accountPage.js: could not find table body");
+      showAutoNavFailureBanner("Could not find the Attendees table — refresh and try again.");
+      chrome.storage.local.remove(STORAGE_KEY.ACCOUNT_AUTO_NAV);
+      return;
+    }
+
+    // Column indexes are discovered from the table header at runtime —
+    // Neon has reordered these in the past, so positional assumptions go
+    // stale silently. See findColumnIndexes() above.
+    const cols = findColumnIndexes(tableBody);
+    if (cols.event == null || cols.status == null) {
+      console.warn("accountPage.js: could not locate Event/Status columns in header", cols);
+      showAutoNavFailureBanner("Could not read the Attendees table layout. Click the registration manually.");
       chrome.storage.local.remove(STORAGE_KEY.ACCOUNT_AUTO_NAV);
       return;
     }
 
     const rows = tableBody.querySelectorAll("tr");
-    console.log(`accountPage.js: found ${rows.length} registration rows in Attendees table`);
+    console.log(`accountPage.js: found ${rows.length} registration rows in Attendees table; cols=${JSON.stringify(cols)}`);
 
-    // Walk rows looking for a SUCCEEDED row whose event matches our config.
-    // Table columns: [0]=Amount, [1]=Event, [2]=Registered On, [3]=Status, [4]=Actions
     for (const row of rows) {
       const cells = row.querySelectorAll("td");
-      if (cells.length < 4) continue;
+      if (cells.length <= Math.max(cols.event, cols.status)) continue;
 
-      const statusCell = cells[3];
-      const eventCell  = cells[1];
-      const amountCell = cells[0];
-
-      const status    = statusCell?.textContent?.trim() ?? "";
-      const eventName = eventCell?.textContent?.trim() ?? "";
+      const status    = cells[cols.status]?.textContent?.trim() ?? "";
+      const eventName = cells[cols.event]?.textContent?.trim()  ?? "";
 
       console.log(`accountPage.js: row - event: "${eventName}", status: "${status}"`);
 
@@ -380,21 +421,29 @@ async function autoClickFirstSucceededRegistration() {
         continue;
       }
 
-      // Match — click the dollar-amount link to open the registration.
-      const amountLink = amountCell.querySelector("a");
-      if (amountLink) {
-        console.log(`accountPage.js: clicking first SUCCEEDED registration: ${eventName} (from ${eventSource})`);
-        amountLink.click();
+      // Prefer the link that points at eventRegDetails (the registration
+      // page we actually want). Fall back to the amount cell's link, then
+      // any link in the row, before giving up.
+      const link = row.querySelector("a[href*='eventRegDetails']")
+                ?? (cols.amount != null ? cells[cols.amount]?.querySelector("a") : null)
+                ?? row.querySelector("a");
+      if (link) {
+        console.log(`accountPage.js: clicking SUCCEEDED registration: ${eventName} (from ${eventSource})`);
+        link.click();
         chrome.storage.local.remove(STORAGE_KEY.ACCOUNT_AUTO_NAV);
         return;
       }
+
+      console.warn(`accountPage.js: matched "${eventName}" but no clickable link found in row`);
     }
 
     console.log("accountPage.js: no valid SUCCEEDED registration found");
+    showAutoNavFailureBanner("No active CONvergence registration found on this account. Click a registration row manually if appropriate.");
     chrome.storage.local.remove(STORAGE_KEY.ACCOUNT_AUTO_NAV);
 
   } catch (err) {
     console.error("accountPage.js: auto-click failed:", err.message);
+    showAutoNavFailureBanner("Could not find the Attendees table — refresh and try again.");
     chrome.storage.local.remove(STORAGE_KEY.ACCOUNT_AUTO_NAV);
   }
 }

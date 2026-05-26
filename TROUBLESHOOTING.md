@@ -1,107 +1,107 @@
-# CONvergence Check-In Extension — Setup Guide
+# CONvergence Check-In Extension — Troubleshooting
 
-Follow these steps to install and configure the extension on a new workstation.
-You do not need any coding experience to do this.
-
----
-
-## What You Need
-
-- A laptop or desktop running **Google Chrome**
-- Access to the **CONvergence GitHub repository** where this extension lives
-- The **Workstation ID** for this computer (ask your Registration Head)
-- The **Management Override password** if this is a Help Desk workstation
-  (ask your Registration Head — do not look for it in the code)
+Quick fixes for problems you may hit on the check-in workstation. If
+something here doesn't help, contact IT before the badge line backs up.
 
 ---
 
-## Step 1 — Download the Extension Files
+## Yellow banner at the top of the Neon page: "No active CONvergence registration found"
 
-1. Go to the CONvergence GitHub repository in your browser
-2. Click the green **Code** button
-3. Click **Download ZIP**
-4. Find the downloaded ZIP file (usually in your Downloads folder)
-5. Right-click it and choose **Extract All** (Windows) or double-click (Mac)
-6. Note where the extracted folder is — you will need it in Step 2
+This appears when you click the extension icon on an account page and the
+extension navigates to the Attendees tab, but can't auto-open a
+registration. It is a **safe fallback**, not a check-in blocker.
 
----
+What to do:
 
-## Step 2 — Load the Extension into Chrome
+1. Look at the Attendees table on the Neon page.
+2. If the attendee has a CONvergence registration with status `SUCCEEDED`,
+   click that row manually to open it.
+3. From there the rest of the check-in flow works as normal.
 
-1. Open **Google Chrome**
-2. In the address bar, type `chrome://extensions` and press Enter
-3. In the top-right corner of that page, turn on **Developer mode**
-   (there is a toggle switch)
-4. Click the **Load unpacked** button that appears
-5. Navigate to the folder you extracted in Step 1 and select it
-6. The **CONvergence Check-In** extension should now appear in the list
-7. Make sure its toggle is turned **on** (blue)
+The banner also shows up in two other cases:
 
-If you see any errors in red on the extensions page, stop and contact IT.
-
----
-
-## Step 3 — Pin the Extension Icon
-
-1. Click the **puzzle piece icon** (🧩) in the top-right corner of Chrome
-2. Find **CONvergence Check-In** in the list
-3. Click the **pin icon** next to it
-4. The Connie wink icon will now appear in your Chrome toolbar
+- **"Could not find the Attendees table — refresh and try again."** —
+  the page took too long to load the registrations table. Reload the Neon
+  tab and try the extension icon again.
+- **"Could not read the Attendees table layout. Click the registration
+  manually."** — Neon may have changed the table structure. The extension
+  will still let you check people in manually; tell IT so the lookup can
+  be updated.
 
 ---
 
-## Step 4 — Set Your Workstation ID
+## Extension popup is blank (no buttons, no info)
 
-Every computer at Registration needs a unique Workstation ID so that badge
-CSV files can be traced back to the correct station.
+Almost always a JavaScript parse error in `js/popup.js`. To confirm:
 
-1. Click the **Connie wink icon** in the Chrome toolbar
-2. Right-click the icon and choose **Options**
-   (or go to `chrome://extensions`, find the extension, and click **Details → Extension options**)
-3. Type your **Workstation ID** in the box (e.g. `REG-01`, `REG-02`, `HELPDESK`)
-   — ask your Registration Head if you are unsure what to use
-4. Click **Save Options**
-5. You should see "Options saved." confirm the save worked
-
----
-
-## Step 5 — Enable Management Override (Help Desk Only)
-
-Help Desk workstations need the Management Override enabled so staff can
-process badges that would otherwise be blocked (e.g. reissues).
-
-1. Open the Options page (see Step 4)
-2. Check the box labelled **Enable Management Override**
-3. A password field will appear — enter the Management Override password
-   (get this from your Registration Head — it is not written down anywhere
-   accessible to volunteers)
-4. Click **Save Options**
-5. You should see "Options saved." — if you see "Incorrect password" the
-   password was wrong; try again or contact your Registration Head
+1. Right-click the extension icon → **Inspect popup**. This opens DevTools
+   attached to the popup. (Plain left-clicks close the popup; right-click
+   keeps it alive.)
+2. Look in the Console for a red `SyntaxError`. The line number points
+   straight at the broken code.
+3. Tell IT. The popup will stay blank until the file is fixed and the
+   extension is reloaded.
 
 ---
 
-## Step 6 — Verify the Extension Is Working
+## Popup opens but doesn't react to my click
 
-1. Log into Neon CRM in Chrome
-2. Navigate to any attendee's Event Registration page
-3. Click the dollar amount to open the registration details
-4. The Connie wink icon in the toolbar should turn **green**
-5. Click the icon — you should see a popup with attendee names listed
+The content script on the underlying Neon page may have failed to load.
 
-If the icon does not change or the popup is empty, see `TROUBLESHOOTING.md`.
+1. With the Neon tab focused, press **F12** to open DevTools.
+2. In the **Settings** ⚙ panel, check **Preserve log**.
+3. Reload the Neon page. In the Console you should see lines starting
+   with `accountPage.js`, `attendeeContact.js`, or `registrations.js`
+   depending on the URL.
+4. If there are none, the content script didn't inject. Try toggling the
+   extension off and on in `chrome://extensions`.
 
 ---
 
-## Updating the Extension
+## Wrong attendee data showing
 
-When a new version is released (typically once a year before con):
+The popup reads cached data from `chrome.storage.local`. If the page was
+loaded before the extension was installed (or before the latest reload),
+the cache may be stale.
 
-1. Download the new ZIP from GitHub (Step 1 above)
-2. Extract it, replacing the old folder
-3. Go to `chrome://extensions`
-4. Find CONvergence Check-In and click the **refresh icon** (circular arrow)
-5. The extension will reload with the new version
+1. Reload the Neon page (Ctrl+R / Cmd+R) — this re-scrapes.
+2. If still wrong, clear the cache via `chrome://extensions` → Details →
+   **Inspect views: service worker** → Application tab → Storage → Local
+   Storage → clear all the keys.
 
-You do not need to re-enter your Workstation ID after an update — it is saved
-separately in Chrome's storage and will still be there.
+---
+
+## Icon stays grey
+
+The extension only colors the icon when it recognizes the page. Greys
+mean "I don't know how to read this page."
+
+- Make sure you're on one of: an account page (`/admin/accounts/N`),
+  the Attendees tab on event-registrations, an `attendeeEdit.do` page,
+  or an `eventRegDetails.do` page.
+- If you ARE on one of those and the icon is still grey, reload the page
+  once.
+
+---
+
+## Badge Delivered button is missing
+
+When the attendee has unresolved blocking conditions (red banner), the
+Badge Delivered button is intentionally hidden — clear the issues first.
+If there are no red banners and no missing required fields and the
+button still isn't there, see "Extension popup is blank" above.
+
+---
+
+## Debugging recipes (for IT)
+
+- **Content-script logs across navigations** — DevTools on the Neon tab,
+  Console → ⚙ → check "Preserve log". Filter by `accountPage`,
+  `attendeeContact`, or `registrations`.
+- **Service worker logs** — `chrome://extensions` → extension card →
+  Details → **Inspect views: service worker**.
+- **Popup logs** — right-click the extension icon → **Inspect popup**.
+  The popup will still close when it calls `window.close()`, but
+  breakpoints fire before that.
+- **Storage inspection** — service worker DevTools → Application →
+  Storage → Local Storage → `chrome-extension://<id>`.

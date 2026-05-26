@@ -120,7 +120,6 @@ function buildAccountLoadingView() {
 // runs as a content script directly on the account page. The popup just
 // reads the cached result from chrome.storage.local. Do not re-scrape here.
 
-async function buildAccountView(account, tab) {
 // ── REGISTRATIONS: NOTE GATE ───────────────────────────────────────────────
 // If the registration has a note, show it first and require acknowledgment
 // before proceeding to the normal attendee list.
@@ -164,8 +163,7 @@ async function buildRegistrationsViewOrNote(registrationData, tab) {
   body.appendChild(screen);
 }
 
-// ── REGISTRATIONS VIEW ─────────────────────────────────────────────────────
-async function buildRegistrationsView(registrationData, tab) {
+async function buildAccountView(account, tab) {
   const body = document.body;
   body.innerHTML = "";
 
@@ -195,8 +193,8 @@ async function buildRegistrationsView(registrationData, tab) {
 
   // ── Account holds banner (RED — blocks check-in) ──
   const holds = account.holds ?? { operationsHold: false, artShowHold: false, registrationHold: false, hasAnyHolds: false };
-  
-if (holds.hasAnyHolds) {
+
+  if (holds.hasAnyHolds) {
     const banner = el("div", { className: "banner banner-red" });
     
     if (managementOverride) {
@@ -634,10 +632,15 @@ async function buildAttendeeView(attendee, tab) {
     table.appendChild(tr);
   };
 
-  // Preferred name row (only if we have one and age step already passed)
+  // Preferred name row — only shown when the attendee actually has a
+  // distinct preferred name. We deliberately do NOT fall back to the legal
+  // first name: showing "Preferred: Angela" next to "Legal Name: Angela
+  // Sample" is just visual noise. Case-insensitive comparison so "angela"
+  // vs "Angela" doesn't trip it.
   if (!needsAgeStep) {
-    const preferred = attendee.preferredName || attendee.legalName?.split(" ")[0] || "";
-    if (preferred) {
+    const preferred = (attendee.preferredName ?? "").trim();
+    const legalFirst = (attendee.legalName ?? "").split(" ")[0] ?? "";
+    if (preferred && preferred.toLowerCase() !== legalFirst.toLowerCase()) {
       const prefSpan = el("span");
       prefSpan.className = "legal-name-value";
       prefSpan.textContent = preferred;
@@ -672,12 +675,21 @@ async function buildAttendeeView(attendee, tab) {
   // ── BLOCKED (no override) ──
   // Red reasons present but no override — short-circuit to a disabled
   // "Send to Help Desk" button and stop rendering.
-  if (isBlocked) {
+  if (isBlocked && !managementOverride) {
     body.appendChild(el("button", { className: "btn-no-issue", textContent: "NOT ALLOWED — SEND TO HELP DESK", disabled: true }));
-  // ── Re-check section ───────────────────────────────────────────────────────
+    body.appendChild(el("div", { className: "helpdesk-note", textContent: "Please send attendee to the Help Desk." }));
+    return;
+  }
+
+  // ── Re-check section ──────────────────────────────────────────────────────
   // If any conditions are fixable on this page, show a single Re-check button
   // plus a "Show me the field" button for ICE if that condition is present.
-  const fixableReasons = reasons.filter(r => r.fixable);
+  // ageVerification is "fixable" but once the volunteer has confirmed ID
+  // (ageVerified flag set in storage), it's effectively cleared — exclude it
+  // here so it doesn't block the Badge Delivered button.
+  const fixableReasons = reasons.filter(r =>
+    r.fixable && !(r.key === CONDITION.AGE_VERIFICATION && ageVerified)
+  );
   if (fixableReasons.length > 0) {
     const recheckSection = el("div", { className: "recheck-section" });
     const recheckBlock   = el("div", { className: "recheck-block" });
@@ -723,8 +735,6 @@ async function buildAttendeeView(attendee, tab) {
 
   if (hasNoAccountId) {
     // Can't proceed at all — no button
-  } else if (isBlocked && !managementOverride) {
-    body.appendChild(el("div", { className: "helpdesk-note", textContent: "Please send attendee to the Help Desk." }));
   } else if (needsAgeStep) {
     const ageBtn = el("button", { className: "btn-age-verify" });
     ageBtn.textContent = "Age Verified, ID Returned ✓";
@@ -733,18 +743,16 @@ async function buildAttendeeView(attendee, tab) {
       buildAttendeeView(attendee, tab);
     });
     body.appendChild(ageBtn);
-  } else if (!isBlocked || managementOverride) {
-    if (hasActiveHold) {
-      const noIssueBtn = el("button", { className: "btn-no-issue" });
-      noIssueBtn.textContent = "⛔ DO NOT ISSUE BADGE";
-      noIssueBtn.disabled = true;
-      body.appendChild(noIssueBtn);
-    } else if (fixableReasons.length === 0 || managementOverride) {
-      const btn = el("button", { className: "btn-checkin" });
-      btn.textContent = "Badge Delivered";
-      btn.addEventListener("click", () => doCheckIn(attendee, tab, btn));
-      body.appendChild(btn);
-    }
+  } else if (hasActiveHold) {
+    const noIssueBtn = el("button", { className: "btn-no-issue" });
+    noIssueBtn.textContent = "⛔ DO NOT ISSUE BADGE";
+    noIssueBtn.disabled = true;
+    body.appendChild(noIssueBtn);
+  } else if (fixableReasons.length === 0 || managementOverride) {
+    const btn = el("button", { className: "btn-checkin" });
+    btn.textContent = "Badge Delivered";
+    btn.addEventListener("click", () => completeCheckIn(attendee, tab, btn));
+    body.appendChild(btn);
   }
 }
 
@@ -757,89 +765,6 @@ async function buildNotFoundView(heading, detail) {
   document.body.appendChild(el("div", { className: "not-found-heading", textContent: heading }));
   document.body.appendChild(el("div", { className: "not-found-detail",  textContent: detail  }));
 }
-
-// ── CHECK-IN ACTION ────────────────────────────────────────────────────────
-async function doCheckIn(attendee, tab, btn) {
-  btn.disabled = true;
-  btn.textContent = "Processing…";
-
-  const csvResult = await saveBadgeCSV(attendee);
-  if (!csvResult.ok) {
-    showError(`Badge CSV could not be downloaded: ${csvResult.error}\n\nDo NOT hand out the badge. Please contact Registration Head.`);
-    return;
-  }
-
-
- // ── RE-CHECK BUTTON ──
-// Shown whenever there is any yellow OR red condition. Clicking asks
-// the content script to re-scrape the Neon form and rebuilds this
-// view. If all issues are now resolved, the badge number will appear
-// at the same moment the Badge Delivered button becomes active.
-if (yellowReasons.length > 0 || redReasons.length > 0) {
-  const recheckBtn = el("button", { className: "btn-recheck-large", textContent: "Re-check ↺" });
-  recheckBtn.addEventListener("click", async () => {
-    console.log("popup.js: Re-check clicked, requesting fresh attendee data from tab", tab.id);
-    
-    try {
-      const result = await new Promise((resolve, reject) => {
-        // Send message with timeout — if no response in 5 seconds, reject
-        const timeout = setTimeout(() => {
-          reject(new Error("Re-check request timed out — content script did not respond"));
-        }, 5000);
-        
-        chrome.tabs.sendMessage(tab.id, { action: ACTION.GET_ATTENDEE_DATA }, (response) => {
-          clearTimeout(timeout);
-          
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
-            return;
-          }
-          
-          if (!response) {
-            reject(new Error("Content script returned empty response"));
-            return;
-          }
-          
-          resolve(response);
-        });
-      });
-      
-      console.log("popup.js: Re-check succeeded, got fresh attendee data");
-      await chrome.storage.local.set({ [STORAGE_KEY.ATTENDEE]: result });
-      body.innerHTML = "";
-      await buildAttendeeView(result, tab);
-    } catch (err) {
-      console.error("popup.js: Re-check failed:", err.message);
-      // Show error message to user
-      body.innerHTML = "";
-      const errorDiv = el("div", { className: "error-screen" });
-      errorDiv.appendChild(el("div", { className: "error-icon", textContent: "✗" }));
-      errorDiv.appendChild(el("div", { className: "error-message", textContent: `Re-check failed: ${err.message}\n\nPlease refresh the Neon page and try again.` }));
-      body.appendChild(errorDiv);
-    }
-  });
-  body.appendChild(recheckBtn);
-}
-
-
-  // ── BADGE DELIVERED BUTTON ──
-  // Enabled only when canIssueBadge is true. When disabled, a tooltip
-  // explains why. The disabled-vs-enabled state intentionally matches
-  // the badge-cell-vs-placeholder state above.
-  const btn = el("button", { className: "btn-checkin", textContent: "Badge Delivered" });
-  if (!canIssueBadge) {
-    btn.disabled = true;
-    btn.style.opacity = "0.5";
-    btn.style.cursor  = "not-allowed";
-    btn.title = hasRed
-      ? "Blocking conditions must be resolved before completing check-in"
-      : "Please fill in required fields and Re-check before completing check-in";
-  } else {
-    btn.addEventListener("click", () => completeCheckIn(attendee, tab, btn));
-  }
-  body.appendChild(btn);
-}
-
 
 // ── CHECK-IN COMPLETION ────────────────────────────────────────────────
 // Fires the CSV download, then messages the content script to write

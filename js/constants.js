@@ -57,6 +57,8 @@ const ACTION = {
 // ACCOUNT_AUTO_NAV        — flag set by popup so accountPage knows to
 //                           auto-click the first SUCCEEDED registration
 // REGISTRATION_ERROR      — populated when a forwarding step fails
+// NOTE_ACKNOWLEDGED       — set by popup when the volunteer dismisses the
+//                           registration-note screen; cleared on popup reset
 
 const STORAGE_KEY = {
   ATTENDEE:            "attendee",
@@ -67,6 +69,7 @@ const STORAGE_KEY = {
   PENDING_ICON_UPDATE: "pendingIconUpdate",
   ACCOUNT_AUTO_NAV:    "cvgAccountAutoNav",
   REGISTRATION_ERROR:  "REGISTRATION_ERROR",
+  NOTE_ACKNOWLEDGED:   "noteAcknowledged",
 };
 
 // ── BLOCKING / WARNING CONDITION KEYS ────────────────────────────────────
@@ -106,5 +109,59 @@ const EVENT_MATCH = {
   TEST:     "TEST",
   MISMATCH: "MISMATCH",
 };
+
+// ── ERROR MESSAGE TEMPLATES ──────────────────────────────────────────────
+// User-friendly templates for errors surfaced in the popup. Every
+// popup-displayed error MUST come from one of these keys — when an
+// unrecognised key is passed, callers fall back to UNKNOWN_ERROR.
+//
+// Defined here (rather than in background.js or popup.js) so the service
+// worker, content scripts, and popup all reference the same table. The
+// service worker picks this up via importScripts("constants.js"); the
+// popup and content scripts pick it up via the manifest content_scripts
+// load order or the <script> tags in popup.html.
+
+const ERROR_MESSAGES = {
+  NO_VALID_EVENT: {
+    title:  "No event found",
+    detail: "We couldn't locate your current event. Please make sure you're viewing the correct account page.",
+    action: "Try refreshing the page and clicking the extension icon again",
+  },
+  NO_SUCCEEDED_REGISTRATION: {
+    title:  "No active registrations found",
+    detail: "This attendee doesn't have any confirmed registrations for the current event.",
+    action: "Verify the attendee is registered for this event in Neon",
+  },
+  NAVIGATION_FAILED: {
+    title:  "Navigation error",
+    detail: "We couldn't navigate to the registration page automatically.",
+    action: "Navigate to the event registrations page manually and try again",
+  },
+  SCRIPT_INJECTION_FAILED: {
+    title:  "Unable to read account data",
+    detail: "The extension encountered a technical issue reading the page.",
+    action: "Refresh the page and try clicking the extension icon again",
+  },
+  TIMEOUT: {
+    title:  "Request took too long",
+    detail: "The page didn't load quickly enough. This can happen if you're on a slow connection.",
+    action: "Wait a moment and try again",
+  },
+  UNKNOWN_ERROR: {
+    title:  "Something went wrong",
+    detail: "An unexpected error occurred while processing your request.",
+    action: "Try refreshing the page and try again. If the problem persists, contact IT",
+  },
+};
+
+// ── DEBUG HELPER ─────────────────────────────────────────────────────────
+// Cheap wrapper around console.log gated on CONFIG.debug (defined in
+// config.js, which is loaded before this file in every entry point).
+// Use dbg(...) for chatty per-page-load tracing; keep console.error /
+// console.warn for things the developer always wants to see.
+
+function dbg(...args) {
+  if (typeof CONFIG !== "undefined" && CONFIG.debug) console.log(...args);
+}
 
 // end js/constants.js
