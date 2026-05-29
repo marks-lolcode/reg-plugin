@@ -4,6 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <title>CONvergence Check-In — Options</title>
+  <link rel="stylesheet" href="css/brand.css">
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -171,6 +172,20 @@
     <label class="mode-option">
       <input type="radio" name="behavior-mode" value="debugging" id="behavior-debugging">
       <span>Debugging (pre-con field check walk)</span>
+    </label>
+  </div>
+
+  <!-- Pop-up behavior (Automated vs Manual). Only visible when Management -->
+  <!-- Override is checked. Persisted in STORAGE_KEY.POPUP_MODE. -->
+  <div id="popup-mode-row" class="mode-row" style="display:none;">
+    <span class="mode-label">Pop-up behavior (Manager only)</span>
+    <label class="mode-option">
+      <input type="radio" name="popup-mode" value="automated" id="popup-automated">
+      <span>Automated (modal opens on its own)</span>
+    </label>
+    <label class="mode-option">
+      <input type="radio" name="popup-mode" value="manual" id="popup-manual">
+      <span>Manual (click the icon to open)</span>
     </label>
   </div>
 

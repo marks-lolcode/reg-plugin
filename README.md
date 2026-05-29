@@ -61,6 +61,7 @@ When a volunteer confirms check-in, the extension automatically:
 │   ├── attendeeContact.js           ← AttendeeEdit page logic (REG mode)
 │   ├── merch-attendee.js            ← AttendeeEdit page logic (MERCH mode)
 │   ├── registrations.js             ← EventRegDetails page logic (both modes)
+│   ├── checkin-modal.js             ← Auto-opening in-page check-in modal (eventReg)
 │   ├── config-doctor.js             ← validateConfig() — config.js self-check
 │   └── debug-report.js              ← Renders the Manager Debug Walk report
 └── tools/

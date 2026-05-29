@@ -810,7 +810,7 @@ function highlightRedConditionFields(attendeeData) {
       const checkboxInput = customCheckboxByRole(fieldRole);
       if (checkboxInput) {
         console.log(`highlightRedConditionFields: highlighting checkbox "${fieldRole}" (index ${FIELD[fieldRole]})`);
-        checkboxInput.style.accentColor = "#dc3545";
+        checkboxInput.style.accentColor = BRAND.red;
         const parent = checkboxInput.closest("div, td, label");
         if (parent) parent.style.background = "#ffcccc";
       }
@@ -852,11 +852,11 @@ function highlightAccountHolds(holds) {
     const checkbox = customCheckboxByRole(role);
     if (checkbox) {
       console.log(`attendeeContact.js: highlighting ${label} checkbox`);
-      checkbox.style.accentColor = "#dc3545";
+      checkbox.style.accentColor = BRAND.red;
       const parent = checkbox.closest("div, td, label, li");
       if (parent) {
         parent.style.background  = "#fff3cd";
-        parent.style.borderLeft  = "4px solid #dc3545";
+        parent.style.borderLeft  = `4px solid ${BRAND.red}`;
         parent.style.paddingLeft = "8px";
       }
     }

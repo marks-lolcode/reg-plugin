@@ -174,6 +174,22 @@ Enable **Manager Override** on the Options page to reveal the **Maintenance** pa
 
 ---
 
+## The check-in panel auto-opens now (or I want the old click-to-open back)
+
+On the **registration (Attendees)** page the check-in list now appears
+automatically as an in-page panel (top-right) once the page loads — no click
+needed. Close it with the **✕**; click the extension icon to re-open it (it
+re-reads the page first).
+
+- If it **didn't** open: make sure you're in Registration mode and that the
+  page finished loading; click the extension icon to force it. A manager can
+  also confirm the mode below.
+- To go back to the **old click-to-open popup**: open the extension Options,
+  enable **Manager Override**, and set **Pop-up behavior → Manual**. (Account
+  pages always behave the old way regardless.)
+
+---
+
 ## Debugging recipes (for IT)
 
 - **Content-script logs across navigations** — DevTools on the Neon tab,

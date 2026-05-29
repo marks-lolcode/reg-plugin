@@ -80,6 +80,10 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
         await setIcon(tab.id, account.state);
       }
     }
+
+    // Decide whether this tab's toolbar click opens the classic popup or
+    // fires onClicked (so the in-page modal can re-open). See applyPopupForTab.
+    await applyPopupForTab(tab.id, pending.page);
   }
 
   // ── Management override toggled -- refresh icon for the active tab ──
@@ -87,11 +91,58 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
     await refreshActiveTabIcon();
   }
 
-  // ── Extension mode toggled -- swap the icon face (wink ⇄ connie) ──
+  // ── Extension mode toggled -- swap the icon face (reggie ⇄ connie) ──
   if (changes[STORAGE_KEY.EXTENSION_MODE]) {
     await applyDefaultIconForMode();
     await refreshActiveTabIcon();
   }
+
+  // ── Pop-up mode toggled -- re-apply click behavior on an open eventReg tab ──
+  if (changes[STORAGE_KEY.POPUP_MODE]) {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const tab  = tabs?.[0];
+    if (tab && (tab.url ?? "").includes("eventRegDetails")) {
+      await applyPopupForTab(tab.id, "registrations");
+    }
+  }
+});
+
+/**
+ * Sets a tab's toolbar-click behavior. In Automated pop-up mode the eventReg
+ * page uses the in-page modal, so we CLEAR the popup for that tab (an empty
+ * popup string makes chrome.action.onClicked fire on click). Every other page
+ * — and Manual mode — keeps the classic popup.html.
+ *
+ * @param {number} tabId
+ * @param {string} page - "registrations" | "attendee" | "account"
+ */
+async function applyPopupForTab(tabId, page) {
+  let popup = "popup.html";
+  // The eventReg and attendee pages both use the in-page modal in Automated
+  // REG mode, so clear their per-tab popup (an empty string makes a toolbar
+  // click fire chrome.action.onClicked → SHOW_CHECKIN_MODAL → the modal).
+  if (page === "registrations" || page === "attendee") {
+    const r = await chrome.storage.local.get({
+      [STORAGE_KEY.POPUP_MODE]:     "automated",
+      [STORAGE_KEY.EXTENSION_MODE]: EXTENSION_MODE.REG,
+    });
+    const automated = (r[STORAGE_KEY.POPUP_MODE] ?? "automated") === "automated";
+    const regMode   = (r[STORAGE_KEY.EXTENSION_MODE] ?? EXTENSION_MODE.REG) === EXTENSION_MODE.REG;
+    if (automated && regMode) popup = ""; // clear → toolbar click fires onClicked → modal
+  }
+  try {
+    await chrome.action.setPopup({ tabId, popup });
+  } catch (e) {
+    // Tab may have closed/navigated; harmless.
+  }
+}
+
+// Toolbar click — only fires when the tab's popup is cleared (Automated mode
+// on the eventReg page). Ask the content script to re-scrape and re-open the
+// in-page modal.
+chrome.action.onClicked.addListener((tab) => {
+  if (!tab?.id) return;
+  chrome.tabs.sendMessage(tab.id, { action: ACTION.SHOW_CHECKIN_MODAL }).catch(() => {});
 });
 
 /**

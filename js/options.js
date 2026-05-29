@@ -30,6 +30,8 @@ async function saveOptions() {
                        ?? EXTENSION_MODE.REG;
   const behavior     = document.querySelector('input[name="behavior-mode"]:checked')?.value
                        ?? "regular";
+  const popupChoice  = document.querySelector('input[name="popup-mode"]:checked')?.value
+                       ?? "automated";
   const statusEl     = document.getElementById("status");
 
   if (mngtOverride) {
@@ -47,10 +49,14 @@ async function saveOptions() {
   // (and clear any in-progress walk state) when override is being disabled.
   const debugMode = mngtOverride && behavior === "debugging";
 
+  // Manual pop-up is a manager-only choice; everyone else is automated.
+  const popupMode = (mngtOverride && popupChoice === "manual") ? "manual" : "automated";
+
   await chrome.storage.local.set({
     [STORAGE_KEY.MANAGEMENT_OVERRIDE]: mngtOverride,
     [STORAGE_KEY.EXTENSION_MODE]:      mode,
     [STORAGE_KEY.DEBUG_MODE]:          debugMode,
+    [STORAGE_KEY.POPUP_MODE]:          popupMode,
   });
   if (!debugMode) {
     await chrome.storage.local.remove([STORAGE_KEY.DEBUG_WALK_ACTIVE]);
@@ -75,6 +81,7 @@ function restoreOptions() {
       [STORAGE_KEY.MANAGEMENT_OVERRIDE]: false,
       [STORAGE_KEY.EXTENSION_MODE]:      EXTENSION_MODE.REG,
       [STORAGE_KEY.DEBUG_MODE]:          false,
+      [STORAGE_KEY.POPUP_MODE]:          "automated",
     },
     (items) => {
       document.getElementById("mngtoverride").checked = items[STORAGE_KEY.MANAGEMENT_OVERRIDE];
@@ -88,6 +95,11 @@ function restoreOptions() {
       const behaviorRadio = document.querySelector(`input[name="behavior-mode"][value="${behaviorValue}"]`)
                          ?? document.getElementById("behavior-regular");
       behaviorRadio.checked = true;
+
+      const popupValue = items[STORAGE_KEY.POPUP_MODE] === "manual" ? "manual" : "automated";
+      const popupRadio = document.querySelector(`input[name="popup-mode"][value="${popupValue}"]`)
+                      ?? document.getElementById("popup-automated");
+      popupRadio.checked = true;
 
       togglePasswordField();
     }
@@ -103,6 +115,7 @@ function togglePasswordField() {
   const on = document.getElementById("mngtoverride").checked;
   document.getElementById("password-row").style.display    = on ? "block" : "none";
   document.getElementById("behavior-row").style.display    = on ? "block" : "none";
+  document.getElementById("popup-mode-row").style.display  = on ? "block" : "none";
   document.getElementById("maintenance-row").style.display = on ? "block" : "none";
   if (on) renderStorageDump();
 }

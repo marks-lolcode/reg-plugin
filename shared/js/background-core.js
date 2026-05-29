@@ -12,9 +12,11 @@
 //   - STORAGE_KEY.MANAGEMENT_OVERRIDE (from shared/js/constants-base.js)
 //
 // Assumes the extension exposes colored icons at:
-//   assets/{wink|connie}-{green|yellow|red}-{19|38}.png  (per-mode toolbar face)
-//   assets/{wink|connie}-black-{16|19|38}.png            (idle / default icon)
-// The image set is chosen by STORAGE_KEY.EXTENSION_MODE: REG → wink, MERCH → connie.
+//   assets/{reggie|connie}-{token}-{19|38}.png  (per-mode toolbar face)
+//   assets/{reggie|connie}-black-{16|19|38}.png  (idle / default icon)
+// The image set is chosen by STORAGE_KEY.EXTENSION_MODE: REG → reggie, MERCH → connie.
+// The "go" file token differs by face: reggie uses "blue" (colorblind-friendly),
+// connie uses "green" (see ICON_FILE_TOKENS); STATE values stay green/yellow/red.
 //
 // Side-effects on load: kicks off generateIconCaches() and resolves
 // iconCachesReadyPromise when every icon has been processed. Callers may
@@ -31,13 +33,25 @@ const ICON_SIZES = [19, 38];
 const DEFAULT_ICON_SIZES = [16, 19, 38];
 
 // ── PER-MODE ICON FACE ───────────────────────────────────────────────────
-// REG mode uses the "wink" face; MERCH mode uses the "connie" face. Both sets
-// must exist at assets/{prefix}-{state}-{size}.png and {prefix}-black-{size}.png.
+// REG mode uses the "reggie" face; MERCH mode uses the "connie" face. Both sets
+// must exist at assets/{prefix}-{token}-{size}.png and {prefix}-black-{size}.png.
 const ICON_PREFIX_BY_MODE = {
-  [EXTENSION_MODE.REG]:   "wink",
+  [EXTENSION_MODE.REG]:   "reggie",
   [EXTENSION_MODE.MERCH]: "connie",
 };
-const DEFAULT_ICON_PREFIX = "wink";
+const DEFAULT_ICON_PREFIX = "reggie";
+
+// Filename color token per STATE, per face. STATE values stay semantic
+// (green/yellow/red = go/caution/stop); the reggie "go" ICON is blue
+// (colorblind-friendly per BRANDING.md), so STATE.GREEN loads the *blue* file
+// for reggie. Connie keeps its green-named "go" file.
+const ICON_FILE_TOKENS = {
+  reggie: { [STATE.GREEN]: "blue",  [STATE.YELLOW]: "yellow", [STATE.RED]: "red" },
+  connie: { [STATE.GREEN]: "green", [STATE.YELLOW]: "yellow", [STATE.RED]: "red" },
+};
+function iconFileToken(prefix, state) {
+  return ICON_FILE_TOKENS[prefix]?.[state] ?? state;
+}
 
 // ── ICON CACHES ────────────────────────────────────────────────────────
 //
@@ -77,7 +91,8 @@ async function generateIconCaches() {
     for (const state of [STATE.GREEN, STATE.YELLOW, STATE.RED]) {
       for (const size of ICON_SIZES) {
         try {
-          const url      = chrome.runtime.getURL(`assets/${prefix}-${state}-${size}.png`);
+          const token    = iconFileToken(prefix, state);
+          const url      = chrome.runtime.getURL(`assets/${prefix}-${token}-${size}.png`);
           const response = await fetch(url);
           const blob     = await response.blob();
           const bitmap   = await createImageBitmap(blob);
@@ -86,7 +101,7 @@ async function generateIconCaches() {
           const ctx    = canvas.getContext("2d", { willReadFrequently: true });
           ctx.drawImage(bitmap, 0, 0, size, size);
 
-          // ── Plain icon ──
+          // ── Plain icon (cache keyed by semantic STATE, not the file token) ──
           normalIconCache[`${prefix}-${state}-${size}`] = ctx.getImageData(0, 0, size, size);
 
           // ── Override icon: draw "M" badge on top ──
@@ -96,7 +111,7 @@ async function generateIconCaches() {
 
           ctx.beginPath();
           ctx.arc(badgeX, badgeY, badgeRadius, 0, Math.PI * 2);
-          ctx.fillStyle = "rgba(20, 20, 20, 0.92)";
+          ctx.fillStyle = BRAND.purple; // manager override = brand purple
           ctx.fill();
 
           const fontSize = Math.max(5, Math.round(badgeRadius * 1.2));
