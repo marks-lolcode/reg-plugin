@@ -71,6 +71,10 @@ const ACTION = {
   // Connectivity check: every content script answers PING so the options-page
   // maintenance panel can confirm the script actually injected on the tab.
   PING:                       "Ping Content Script",
+  // Sent by background.js (chrome.action.onClicked) when the toolbar icon is
+  // clicked in Automated pop-up mode on the eventReg page, so the in-page
+  // check-in modal re-scrapes and re-opens.
+  SHOW_CHECKIN_MODAL:         "Show Check-In Modal",
 };
 
 // ── EXTEND STORAGE_KEY WITH APP-SPECIFIC KEYS ───────────────────────────
@@ -92,6 +96,11 @@ STORAGE_KEY.ACCOUNT           = "account";
 STORAGE_KEY.AGE_VERIFIED      = "ageVerified";
 STORAGE_KEY.ACCOUNT_AUTO_NAV  = "cvgAccountAutoNav";
 STORAGE_KEY.NOTE_ACKNOWLEDGED = "noteAcknowledged";
+// POPUP_MODE -- "automated" | "manual". Automated (default) auto-opens the
+// in-page check-in modal on the eventReg page and re-opens it on toolbar click;
+// Manual keeps the classic click-to-open popup.html. Only managers can pick
+// manual (set on the options page); everyone else is automated.
+STORAGE_KEY.POPUP_MODE        = "popupMode";
 
 // ── BLOCKING / WARNING CONDITION KEYS ────────────────────────────────────
 // Keys for every blocking/warning condition. Used as keys in the reasons

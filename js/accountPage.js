@@ -362,7 +362,7 @@ function highlightHoldRows(holds, managementOverride) {
 
         if (labelCol) {
           labelCol.style.background  = "#ffcccc";
-          labelCol.style.borderLeft  = "4px solid #dc3545";
+          labelCol.style.borderLeft  = `4px solid ${BRAND.red}`;
           labelCol.style.paddingLeft = "8px";
         }
         if (valueCol) {

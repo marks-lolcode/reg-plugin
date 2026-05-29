@@ -56,6 +56,20 @@ const STORAGE_KEY = {
   ERROR_LOG:           "errorLog",
 };
 
+// ── BRAND COLORS ─────────────────────────────────────────────────────────
+// JS mirror of the brand palette (see BRANDING.md + css/brand.css) for the few
+// places colors are set outside CSS: the toolbar icon "M" override badge and a
+// handful of inline styles. Keep in sync with css/brand.css.
+//   purple = section headers/override · green = links · blue = "go/OK" status
+//   (colorblind-friendly) · red = stop/error · yellow = caution
+const BRAND = {
+  purple: "#620272",
+  green:  "#328332",
+  blue:   "#0072B2",
+  red:    "#CC0202",
+  yellow: "#FFB400",
+};
+
 // ── ERROR MESSAGE TEMPLATES ──────────────────────────────────────────────
 // Generic templates surfaced by the popup. Extensions may add app-specific
 // templates to this object from their own constants.js.
