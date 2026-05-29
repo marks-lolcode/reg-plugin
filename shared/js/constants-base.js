@@ -43,6 +43,17 @@ const STORAGE_KEY = {
   PENDING_ICON_UPDATE: "pendingIconUpdate",
   REGISTRATION_ERROR:  "REGISTRATION_ERROR",
   EXTENSION_MODE:      "extensionMode",
+  // ── Manager debug walk (pre-con field-label resolution audit) ──
+  // DEBUG_MODE        -- options-page toggle, only honored when MANAGEMENT_OVERRIDE is true
+  // DEBUG_WALK_ACTIVE -- {startedAt, accountId} | null; present while the walk is in flight
+  // DEBUG_REPORT      -- {steps: [{step, status, details, issues:[]}], finishedAt} | null
+  DEBUG_MODE:          "debugMode",
+  DEBUG_WALK_ACTIVE:   "debugWalkActive",
+  DEBUG_REPORT:        "debugReport",
+  // ERROR_LOG -- bounded ring buffer (last ~20) of recorded errors, for the
+  // debug report's "Recent errors" section. REGISTRATION_ERROR above is the
+  // single latest error the popup surfaces; this is the rolling history.
+  ERROR_LOG:           "errorLog",
 };
 
 // ── ERROR MESSAGE TEMPLATES ──────────────────────────────────────────────

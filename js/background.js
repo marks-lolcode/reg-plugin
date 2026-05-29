@@ -84,34 +84,43 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
 
   // ── Management override toggled -- refresh icon for the active tab ──
   if (changes[STORAGE_KEY.MANAGEMENT_OVERRIDE]) {
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    const tab  = tabs?.[0];
-    if (!tab) return;
+    await refreshActiveTabIcon();
+  }
 
-    const url = tab.url ?? "";
-
-    if (url.includes("attendeeEdit")) {
-      const result   = await chrome.storage.local.get(STORAGE_KEY.ATTENDEE);
-      const attendee = result[STORAGE_KEY.ATTENDEE];
-      if (attendee?.state) await setIcon(tab.id, attendee.state);
-
-    } else if (url.includes("eventRegDetails")) {
-      const result        = await chrome.storage.local.get(STORAGE_KEY.REGISTRATIONS);
-      const registrations = result[STORAGE_KEY.REGISTRATIONS];
-      if (registrations?.data) {
-        await setIcon(tab.id, worstStateFromRows(registrations.data));
-      }
-
-    } else if (url.includes("/admin/accounts/")) {
-      const result  = await chrome.storage.local.get(STORAGE_KEY.ACCOUNT);
-      const account = result[STORAGE_KEY.ACCOUNT];
-      if (account?.state) await setIcon(tab.id, account.state);
-
-    } else if (url.includes("neoncrm.com")) {
-      await setIcon(tab.id, STATE.GREEN);
-    }
+  // ── Extension mode toggled -- swap the icon face (wink ⇄ connie) ──
+  if (changes[STORAGE_KEY.EXTENSION_MODE]) {
+    await applyDefaultIconForMode();
+    await refreshActiveTabIcon();
   }
 });
+
+/**
+ * Re-applies the toolbar icon for the active tab from its stored scrape state.
+ * Used when something that affects icon appearance changes (manager override,
+ * extension mode) without a fresh page scrape.
+ */
+async function refreshActiveTabIcon() {
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  const tab  = tabs?.[0];
+  if (!tab) return;
+  const url = tab.url ?? "";
+
+  if (url.includes("attendeeEdit")) {
+    const result = await chrome.storage.local.get(STORAGE_KEY.ATTENDEE);
+    if (result[STORAGE_KEY.ATTENDEE]?.state) await setIcon(tab.id, result[STORAGE_KEY.ATTENDEE].state);
+
+  } else if (url.includes("eventRegDetails")) {
+    const result = await chrome.storage.local.get(STORAGE_KEY.REGISTRATIONS);
+    if (result[STORAGE_KEY.REGISTRATIONS]?.data) await setIcon(tab.id, worstStateFromRows(result[STORAGE_KEY.REGISTRATIONS].data));
+
+  } else if (url.includes("/admin/accounts/")) {
+    const result = await chrome.storage.local.get(STORAGE_KEY.ACCOUNT);
+    if (result[STORAGE_KEY.ACCOUNT]?.state) await setIcon(tab.id, result[STORAGE_KEY.ACCOUNT].state);
+
+  } else if (url.includes("neoncrm.com")) {
+    await setIcon(tab.id, STATE.GREEN);
+  }
+}
 
 // ── POST-CHECK-IN REDIRECT ─────────────────────────────────────────────
 //
@@ -249,6 +258,24 @@ async function recordErrorInStorage(errorType, originalError, context = {}) {
 
   await chrome.storage.local.set({ [STORAGE_KEY.REGISTRATION_ERROR]: errorState });
   console.log("[BackgroundScript] Error stored for popup display:", errorState);
+
+  // Also append to a bounded ring buffer for the debug report's error history.
+  // REGISTRATION_ERROR above is the single latest error the popup shows; this
+  // keeps the last 20 so IT can spot recurring failures.
+  try {
+    const logResult = await chrome.storage.local.get(STORAGE_KEY.ERROR_LOG);
+    const log = Array.isArray(logResult[STORAGE_KEY.ERROR_LOG]) ? logResult[STORAGE_KEY.ERROR_LOG] : [];
+    log.push({
+      type: errorType,
+      title: messageTemplate.title,
+      message: String(originalError),
+      context,
+      at: new Date(timestamp).toISOString(),
+    });
+    await chrome.storage.local.set({ [STORAGE_KEY.ERROR_LOG]: log.slice(-20) });
+  } catch (e) {
+    console.warn("[BackgroundScript] could not append to ERROR_LOG:", e?.message);
+  }
 }
 
 /**
@@ -265,6 +292,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       armedPostCheckin.set(tabId, Date.now());
       console.log(`background.js: armed post-check-in redirect for tab ${tabId}`);
     }
+    sendResponse({ ok: true });
+    return;
+  }
+
+  // Manager Debug Walk finished (or halted) -- open the report tab and clear
+  // the walk flag so subsequent normal clicks aren't hijacked. DEBUG_REPORT is
+  // left in place for the report page to read.
+  if (message?.action === ACTION.OPEN_DEBUG_REPORT) {
+    chrome.tabs.create({ url: chrome.runtime.getURL("debug-report.html") });
+    chrome.storage.local.remove(STORAGE_KEY.DEBUG_WALK_ACTIVE);
+    console.log("background.js: opened debug report tab and cleared DEBUG_WALK_ACTIVE");
     sendResponse({ ok: true });
     return;
   }

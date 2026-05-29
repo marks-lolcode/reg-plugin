@@ -42,7 +42,8 @@ When a volunteer confirms check-in, the extension automatically:
 ├── config.js                        ← ANNUAL UPDATE FILE — edit this each year
 ├── manifest.json                    ← Chrome extension configuration
 ├── popup.html                       ← Extension popup window
-├── extension_options_page.html      ← Options page (workstation ID, override)
+├── extension_options_page.html      ← Options page (mode, manager override, debug)
+├── debug-report.html                ← Manager Debug Walk report tab
 ├── assets/                          ← Extension icons
 ├── _locales/en/                     ← Localisation strings
 ├── installation/                    ← Page shown on first install
@@ -59,10 +60,12 @@ When a volunteer confirms check-in, the extension automatically:
 │   ├── accountPage.js               ← Account page auto-nav
 │   ├── attendeeContact.js           ← AttendeeEdit page logic (REG mode)
 │   ├── merch-attendee.js            ← AttendeeEdit page logic (MERCH mode)
-│   └── registrations.js             ← EventRegDetails page logic (both modes)
+│   ├── registrations.js             ← EventRegDetails page logic (both modes)
+│   ├── config-doctor.js             ← validateConfig() — config.js self-check
+│   └── debug-report.js              ← Renders the Manager Debug Walk report
 └── tools/
 ├── generate-password-hash.html  ← Run locally to hash the annual password
-└── find-field-indexes.html      ← Run locally if Neon fields stop working
+└── field-diagnostic.html        ← Single-page field check (paste a DevTools dump)
 
 ## Key People
 

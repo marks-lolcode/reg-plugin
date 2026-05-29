@@ -59,6 +59,18 @@ const ACTION = {
   // finished). merch-attendee.js scrapes fresh and returns the state
   // synchronously so the popup can render without waiting on storage.
   GET_ATTENDEE_MERCH:         "Get Attendee Merch",
+  // Sent by attendeeContact.js after the manager debug walk's final
+  // audit step writes STORAGE_KEY.DEBUG_REPORT. background.js opens the
+  // full-page report tab in response. Also sent at every early-halt point
+  // (accountPage.js / registrations.js) so a partial report still opens.
+  OPEN_DEBUG_REPORT:          "Open Debug Report",
+  // Sent by popup.js initiateDebugWalk to accountPage.js BEFORE navigating
+  // away from the account About page, so the About-page fields are captured
+  // into the debug report while they are still on screen.
+  RUN_ACCOUNT_DEBUG_AUDIT:    "Run Account Debug Audit",
+  // Connectivity check: every content script answers PING so the options-page
+  // maintenance panel can confirm the script actually injected on the tab.
+  PING:                       "Ping Content Script",
 };
 
 // ── EXTEND STORAGE_KEY WITH APP-SPECIFIC KEYS ───────────────────────────
