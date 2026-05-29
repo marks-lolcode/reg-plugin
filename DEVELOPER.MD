@@ -335,6 +335,61 @@ renderers in `js/debug-report.js`.
 
 ---
 
+## Auto-opening check-in modal
+
+In **Automated** pop-up mode (`STORAGE_KEY.POPUP_MODE`, default `"automated"`; managers can pick
+`"manual"` on the options page) the eventReg AND attendee pages show their check-in UI as an
+**in-page modal** instead of the toolbar popup.
+
+**Phase 1 — eventReg list modal:**
+- `js/checkin-modal.js` (manifest-injected **after** `js/registrations.js`, with
+  `css/checkin-modal.css`) auto-opens the modal on load when REG + Automated and no debug walk is
+  active. It reuses `registrations.js`'s `getRegistrationsInfo()` / `getRegistrationNotes()` globals
+  and mirrors `popup.js`'s `buildAttendeeListContent()` + `navigateToAttendeeEdit()`. All styles are
+  scoped under `#cvg-checkin-modal`.
+
+**Phase 2 — attendee-page check-in modal:**
+- `js/attendee-modal.js` (manifest-injected **after** `js/attendeeContact.js` + `js/merch-attendee.js`,
+  with `css/checkin-modal.css`) auto-opens on the `attendeeEdit.do` page under the same gate. Same
+  isolated world, so it calls `attendeeContact.js`'s globals **directly** (no messaging):
+  `getAttendeeInfo()` (scrape / Re-check), `incrementBadge()` (write fields + submit),
+  `highlightICEField()` (Show-me-the-field). `renderAttendeeModal()` mirrors `popup.js`'s
+  `buildAttendeeView` (override banner, age-verify gate, red/yellow banners, badge cell vs
+  placeholder, info table, blocked → help-desk, Re-check section, Badge-Issued) and the
+  `completeCheckIn` flow (`saveBadgeCSV` — replicated locally — then `incrementBadge`, then clear
+  `AGE_VERIFIED`). Reuses the `#cvg-checkin-modal` container/styles.
+
+**Both pages:**
+- `js/background.js` `applyPopupForTab()` clears the tab's action popup (`setPopup({tabId, popup:""})`)
+  in REG+Automated mode for `page === "registrations"` and `page === "attendee"`, so a toolbar click
+  fires `chrome.action.onClicked` → `ACTION.SHOW_CHECKIN_MODAL` (re-scrape + re-open). Account pages
+  and Manual mode keep `popup.html`. Toggling `POPUP_MODE` re-applies the active eventReg tab
+  immediately.
+- **Draggable:** `js/modal-drag.js` (shared, loaded before each modal script) exposes
+  `makeDraggable(modalEl, handleEl)`. Header `mousedown` switches the modal to `left/top` and drags it
+  (clamped to the viewport); the position is remembered in a module variable and reapplied on
+  re-render so it survives a Re-check or toolbar re-open. Clicks on the ✕ (or any header button) don't
+  start a drag.
+
+---
+
+## Brand colors
+
+Canonical palette + rules live in `BRANDING.md`. In code:
+- **CSS:** `css/brand.css` defines `:root` brand variables (`--brand-purple/green/blue/red/yellow`)
+  plus `color-mix()`-derived `*-bg` (light backgrounds), `*-dark` (hover/border), and `*-ink` (text)
+  variants. It's loaded by `popup.html`, the options page, and the eventReg `content_scripts` css.
+  `css/popup.css` and `css/checkin-modal.css` reference `var(--brand-*)` — no raw brand hex.
+- **JS:** `BRAND` in `shared/js/constants-base.js` mirrors the base hexes for non-CSS uses (the icon
+  "M" badge in `background-core.js`, a few inline styles in popup/content scripts).
+- **Colorblind status rule:** the "ready/go" state uses **blue**, not green (green is links). This
+  shows up as `--brand-blue-bg` for `.banner-green` / `.reg-row-green`, the blue `reggie-blue-*`
+  toolbar icon, and blue primary buttons.
+- **Toolbar faces:** `assets/reggie-*` (REG) and `assets/connie-*` (MERCH); raster, so not affected
+  by the CSS vars.
+
+---
+
 ## Tools
 
 ### `tools/generate-password-hash.html`
