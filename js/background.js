@@ -1,292 +1,321 @@
-const CURRENT_EVENT = "248";
-// a,A = adult, k,K = child, c,C = youth, t,T = teen
-const BADGE_REGEXP = /^[a,A,k,K,c,C,t,T][1-9]+/;
+// js/background.js
+// ============================================================================
+// CONvergence Check-In Extension -- Service Worker
+// ============================================================================
+//
+// This is the Manifest V3 service worker. It runs in the background and is
+// responsible for two things:
+//
+//   1. Updating the extension toolbar icon (green / yellow / red, with an
+//      optional "M" badge when Manager Override is active) based on what
+//      the content scripts have scraped from the current Neon page.
+//
+//   2. Receiving error reports from content scripts and storing them in
+//      chrome.storage.local so the popup can display them.
+//
+// importScripts paths are relative to THIS file's location (js/background.js):
+//   "../shared/js/constants-base.js"   -> repo root/shared/js/constants-base.js
+//                                          (provides STATE, the icon-machinery
+//                                           STORAGE_KEY entries, ERROR_MESSAGES, dbg)
+//   "../config.js"                     -> repo root/config.js
+//   "constants.js"                     -> js/constants.js (same folder; mutates
+//                                          STORAGE_KEY with app-specific keys)
+//   "../shared/js/background-core.js"  -> generic icon cache + setIcon +
+//                                          worstStateFromRows. Kicks off icon
+//                                          cache build as a side effect.
+// ============================================================================
+
+importScripts(
+  "../shared/js/constants-base.js",
+  "../config.js",
+  "constants.js",
+  "../shared/js/background-core.js"
+);
+
+// ── STORAGE CHANGE LISTENER ────────────────────────────────────────────
 
 /**
- * Created by Matt Resong on 1/10/14.
- */
-
-/****************************************************
-
-/****************************************************
- * PRINTING
+ * Central handler for all storage changes that should trigger an icon update.
  *
- * This section checks pages for appropriate data and
- * causes the connie wink to appear and disappear
- * in various colors depending upon the data received.
+ * PENDING_ICON_UPDATE: written by content scripts after committing their data.
+ *   chrome.storage.onChanged reliably wakes the SW even if it was terminated,
+ *   unlike chrome.runtime.sendMessage which is silently dropped if the SW
+ *   isn't yet ready.
  *
- * It is intended to facilitate the printing function.
+ * MANAGEMENT_OVERRIDE: written by options.js when the override is toggled.
+ *   Re-reads stored data and refreshes the icon to show/hide the "M" badge.
  */
+chrome.storage.onChanged.addListener(async (changes, area) => {
+  if (area !== "local") return;
 
-// Listen for a tab to finish loading of the specific URL
-// This works much better than adding a listener via chrome.tabs
-// as it does not execute for every site and every tab
-chrome.webNavigation.onCompleted.addListener(
-  function checkForValidUrl2(tabId) {
-    console.log("The appropriate page has finished loading, moving on");
-    // setup the valid tab, get the data and display the icon
-    updateAttendeeInfo(tabId.tabId);
-  },
-  {
-    url: [{ urlContains: "ce.app.neoncrm.com/np/admin/event/attendeeEdit.do" }],
-  }
-);
+  // ── Icon update triggered by content script ──
+  if (changes[STORAGE_KEY.PENDING_ICON_UPDATE]) {
+    const pending = changes[STORAGE_KEY.PENDING_ICON_UPDATE].newValue;
+    if (!pending) return;
 
-chrome.webNavigation.onCompleted.addListener(
-  function checkForValidUrl2(tabId) {
-    console.log("The appropriate page has finished loading, moving on");
-    // setup the valid tab, get the data and display the icon
-    updateAttendeeInfo(tabId.tabId);
-  },
-  {
-    url: [{ urlContains: "ce.app.neoncrm.com/np/admin/event/attendeeEdit.do" }],
-  }
-);
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const tab  = tabs[0];
+    if (!tab) return;
 
-chrome.webNavigation.onCompleted.addListener(
-  function checkForValidUrl2(tabId) {
-    console.log("The appropriate page has finished loading, moving on");
-    // setup the valid tab, get the data and display the icon
-    updateAttendeeInfo(tabId.tabId);
-  },
-  {
-    url: [
-      { urlContains: "ce.app.neoncrm.com/np/admin/event/contactSelect.do" },
-    ],
-  }
-);
+    const url = tab.url ?? "";
 
-chrome.webNavigation.onCompleted.addListener(
-  function checkForValidUrl2(tabId) {
-    console.log("The appropriate page has finished loading, moving on");
-    // setup the valid tab, get the data and display the icon
-    updateAttendeeInfo(tabId.tabId);
-  },
-  {
-    url: [
-      {
-        urlContains: "trial.ce.app.neoncrm.com/np/admin/event/contactSelect.do",
-      },
-    ],
-  }
-);
+    if (pending.page === "attendee" && url.includes("attendeeEdit")) {
+      const result   = await chrome.storage.local.get(STORAGE_KEY.ATTENDEE);
+      const attendee = result[STORAGE_KEY.ATTENDEE];
+      if (attendee?.state) {
+        await setIcon(tab.id, attendee.state);
+      }
 
-chrome.webNavigation.onCompleted.addListener(
-  function checkForValidUrl2(tabId) {
-    console.log("The appropriate page has finished loading, moving on");
-    // setup the valid tab, get the data and display the icon
-    updateRegistrationsInfo(tabId.tabId);
-  },
-  {
-    url: [
-      { urlContains: "ce.app.neoncrm.com/np/admin/event/eventRegDetails.do" },
-    ],
-  }
-);
+    } else if (pending.page === "registrations" && url.includes("eventRegDetails")) {
+      const result        = await chrome.storage.local.get(STORAGE_KEY.REGISTRATIONS);
+      const registrations = result[STORAGE_KEY.REGISTRATIONS];
+      if (registrations?.data) {
+        await setIcon(tab.id, worstStateFromRows(registrations.data));
+      }
 
-chrome.webNavigation.onCompleted.addListener(
-  function checkForValidUrl2(tabId) {
-    console.log("The appropriate page has finished loading, moving on");
-    // setup the valid tab, get the data and display the icon
-    updateRegistrationsInfo(tabId.tabId);
-  },
-  {
-    url: [
-      {
-        urlContains:
-          "trial.ce.app.neoncrm.com/np/admin/event/eventRegDetails.do",
-      },
-    ],
-  }
-);
-
-//This will update the information we have about the attendee and make the icon appear and disappear as needed
-function updateAttendeeInfo(tabId) {
-  chrome.tabs.sendMessage(
-    tabId,
-    { action: "Get Attendee Data" },
-    function (attendee) {
-      console.log("The attendee data returned was:" + attendee);
-      chrome.storage.local.set({ attendee: attendee });
-      if (!attendee) {
-        console.log(
-          "This page does not have the required attendee data and therefore no icon will display"
-        );
-        chrome.action.disable(tabId);
-      } else {
-        const ico = `../assets/wink-${attendee.state}-19.png`;
-        console.log("The icon path to set is: " + ico);
-        chrome.action.setIcon({ tabId: tabId, path: ico }, function () {
-          chrome.action.enable(tabId);
-        });
+    } else if (pending.page === "account" && url.includes("/admin/accounts/")) {
+      const result  = await chrome.storage.local.get(STORAGE_KEY.ACCOUNT);
+      const account = result[STORAGE_KEY.ACCOUNT];
+      if (account?.state) {
+        await setIcon(tab.id, account.state);
       }
     }
-  );
-}
+  }
 
-function updateRegistrationsInfo(tabId) {
-  chrome.tabs.sendMessage(
-    tabId,
-    { action: "Get Registrations Data" },
-    async function (registrations) {
-      chrome.storage.local.set({ registrations: registrations });
-      if (!registrations) {
-        console.log(
-          "This page does not have the required registrations data and therefore no icon will display"
-        );
-        chrome.action.disable(tabId);
-      } else {
-        var ico = "../assets/wink-green-19.png";
-        console.log("The icon path to set is: " + ico);
-        chrome.action.setIcon({ tabId: tabId, path: ico }, function () {
-          chrome.action.enable(tabId);
-        });
-      }
-    }
-  );
-}
+  // ── Management override toggled -- refresh icon for the active tab ──
+  if (changes[STORAGE_KEY.MANAGEMENT_OVERRIDE]) {
+    await refreshActiveTabIcon();
+  }
 
-/****************************************************
- * INSTALLATION AND UPGRADES
- *
- * This displays a message when installing the app
- * or upgrading it and opens the chrome settings
- * to encourage the user to change the download
- * location for the printing portion of this extension.
- */
-
-chrome.runtime.onInstalled.addListener(function (details) {
-  if (details.reason == "install" || details.reason == "upgrade") {
-    chrome.tabs.create({ url: "installation/installed.html" });
+  // ── Extension mode toggled -- swap the icon face (wink ⇄ connie) ──
+  if (changes[STORAGE_KEY.EXTENSION_MODE]) {
+    await applyDefaultIconForMode();
+    await refreshActiveTabIcon();
   }
 });
 
-/**************************************************
- * Mark Sauntry 2024 - I do not know if we need the omnibox functionality, Neon has a great search function on it's own.
- * I also do not know if this is actually working, when I tried searching via the Omnibox it just went to Google Search
+/**
+ * Re-applies the toolbar icon for the active tab from its stored scrape state.
+ * Used when something that affects icon appearance changes (manager override,
+ * extension mode) without a fresh page scrape.
  */
+async function refreshActiveTabIcon() {
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  const tab  = tabs?.[0];
+  if (!tab) return;
+  const url = tab.url ?? "";
 
-/****************************************************
- * OMNIBOX
+  if (url.includes("attendeeEdit")) {
+    const result = await chrome.storage.local.get(STORAGE_KEY.ATTENDEE);
+    if (result[STORAGE_KEY.ATTENDEE]?.state) await setIcon(tab.id, result[STORAGE_KEY.ATTENDEE].state);
+
+  } else if (url.includes("eventRegDetails")) {
+    const result = await chrome.storage.local.get(STORAGE_KEY.REGISTRATIONS);
+    if (result[STORAGE_KEY.REGISTRATIONS]?.data) await setIcon(tab.id, worstStateFromRows(result[STORAGE_KEY.REGISTRATIONS].data));
+
+  } else if (url.includes("/admin/accounts/")) {
+    const result = await chrome.storage.local.get(STORAGE_KEY.ACCOUNT);
+    if (result[STORAGE_KEY.ACCOUNT]?.state) await setIcon(tab.id, result[STORAGE_KEY.ACCOUNT].state);
+
+  } else if (url.includes("neoncrm.com")) {
+    await setIcon(tab.id, STATE.GREEN);
+  }
+}
+
+// ── POST-CHECK-IN REDIRECT ─────────────────────────────────────────────
+//
+// attendeeContact.js fires ACTION.ARM_POST_CHECKIN_REDIRECT immediately
+// before clicking Neon's Submit button on a check-in. We record the tabId
+// here, then watch for the eventRegDetails.do navigation Neon triggers as
+// the form POST response. When it commits, we redirect that tab to the
+// account-search page so the volunteer always starts the next check-in
+// from a clean account lookup.
+//
+// Map state lives in memory only: the arm-to-fire window is sub-second and
+// the service worker stays alive across the webNavigation event. The 60 s
+// staleness guard covers the edge case where Submit silently fails and no
+// eventRegDetails navigation ever follows.
+
+const armedPostCheckin = new Map();  // tabId → armed-at timestamp (ms)
+const ARMED_REDIRECT_TTL_MS = 60_000;
+
+chrome.webNavigation.onCommitted.addListener((details) => {
+  if (details.frameId !== 0) return;
+
+  const armedTs = armedPostCheckin.get(details.tabId);
+  if (!armedTs) return;
+
+  armedPostCheckin.delete(details.tabId);
+  if (Date.now() - armedTs > ARMED_REDIRECT_TTL_MS) {
+    console.log(`background.js: armed redirect stale for tab ${details.tabId}, ignoring`);
+    return;
+  }
+
+  const target = `https://${CONFIG.neon.productionDomain}/np/admin/content/contentList.do`;
+  console.log(`background.js: post-check-in redirect tab ${details.tabId} → ${target}`);
+  chrome.tabs.update(details.tabId, { url: target });
+}, {
+  url: [{
+    hostEquals:   CONFIG.neon.productionDomain,
+    pathContains: "/np/admin/event/eventRegDetails.do",
+  }],
+});
+
+// ── WEB NAVIGATION FALLBACK ────────────────────────────────────────────
+
+/**
+ * Fallback for non-content-script Neon pages and as a safety net in case
+ * the storage-based trigger didn't fire (e.g. storage write failed).
  *
- * The below handles our omnibox keyword.
- *
- * It is reasonably intelligent and tries to guess
- * if the user entry is a badge number or not and
- * takes appropriate action based upon the input
- * and the users selection in the omnibox
+ * Retries the content-script message up to 5 times with increasing delay
+ * so we don't fail just because the page DOM wasn't ready yet.
  */
+chrome.webNavigation.onCompleted.addListener(async (details) => {
+  if (details.frameId !== 0) return;
 
-// This event is fired each time the user updates the text in the omnibox,
-// as long as the extension's keyword mode is still active.
-chrome.omnibox.onInputChanged.addListener(function (text, suggest) {
-  //console.log('omnibox inputChanged: ' + text);
-  var badgeNum;
-  if (text.match(BADGE_REGEXP)) {
-    console.log(
-      "We think this is a badge identifier so far and we will place that suggestion at the top of the list"
-    );
-    badgeNumId = text.substring(1);
-    //console.log(badgeNumId);
-    suggest([
-      {
-        content:
-          "https://ce.app.neoncrm.com/np/admin/event/attendeeEdit.do?id=" +
-          badgeNumId,
-        description: "Navigate to this Badge Number",
-      },
-      {
-        content:
-          "https://ce.app.neoncrm.com/np/admin/searchResult.do?key=" +
-          text +
-          "&search=Search&searchType=1",
-        description: "Search For This Account Keyword",
-      },
-      {
-        content:
-          "https://ce.app.neoncrm.com/np/admin/event/registrationSearch.do?query.eventId=" +
-          CURRENT_EVENT,
-        description: "Open a general search for registrants/attendees",
-      },
-    ]);
-  } else {
-    suggest([
-      {
-        content:
-          "https://ce.app.neoncrm.com/np/admin/searchResult.do?key=" +
-          text +
-          "&search=Search&searchType=1",
-        description: "Search For This Account Keyword",
-      },
-      {
-        content:
-          "https://ce.app.neoncrm.com/np/admin/event/attendeeEdit.do?id=" +
-          text,
-        description: "Navigate to this Badge Number",
-      },
-      {
-        content:
-          "https://ce.app.neoncrm.com/np/admin/event/registrationSearch.do?query.eventId=" +
-          CURRENT_EVENT,
-        description: "Open a general search for registrants/attendees",
-      },
-    ]);
+  const url = details.url ?? "";
+
+  // Non-content-script Neon pages -- set green directly to acknowledge
+  // that we're "in Neon" even though we have nothing specific to evaluate.
+  if (
+    url.includes("neoncrm.com") &&
+    !url.includes("attendeeEdit") &&
+    !url.includes("eventRegDetails") &&
+    !url.includes("/admin/accounts/")
+  ) {
+    await setIcon(details.tabId, STATE.GREEN);
+    return;
+  }
+
+  // Only the attendeeEdit and eventRegDetails pages support the
+  // request/response message API used by this fallback.
+  if (!url.includes("attendeeEdit") && !url.includes("eventRegDetails")) return;
+
+  const action = url.includes("attendeeEdit")
+    ? ACTION.GET_ATTENDEE_DATA
+    : ACTION.GET_REGISTRATIONS;
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
+    try {
+      const response = await chrome.tabs.sendMessage(details.tabId, { action });
+      if (!response) continue;
+
+      if (action === ACTION.GET_ATTENDEE_DATA) {
+        await setIcon(details.tabId, response.state);
+      } else {
+        await setIcon(details.tabId, worstStateFromRows(response.data ?? []));
+      }
+      console.log(`background.js: webNav fallback succeeded attempt ${attempt + 1} tab ${details.tabId}`);
+      return;
+    } catch (err) {
+      console.warn(`background.js: webNav fallback attempt ${attempt + 1} failed:`, err.message);
+    }
   }
 });
 
-// This event is fired with the user accepts the input in the omnibox.
-chrome.omnibox.onInputEntered.addListener(function (text) {
-  //console.log('omnibox inputEntered: ' + text);
-  chrome.tabs.getSelected(null, function (tab) {
-    var url;
-    if (text.substr(0, 8) == "https://") {
-      console.log(
-        "User picked a URL option, so we will go with that. User entered: " +
-          text
-      );
-      url = text;
-      // If text does not look like a URL, then we will guess based on the input
-    } else {
-      if (text.match(BADGE_REGEXP)) {
-        badgeNumId = text.substring(1);
-        console.log(
-          "We think this is a badge identifier so that's what we will look for. User entered: " +
-            text +
-            " we are seraching for: " +
-            badgeNumId
-        );
-        url =
-          "https://ce.app.neoncrm.com/np/admin/event/attendeeEdit.do?id=" +
-          badgeNumId;
-      } else {
-        if (text.trim() == "") {
-          console.log(
-            "User did not enter anything, so we will take them to a generic search"
-          );
-          url =
-            "https://ce.app.neoncrm.com/np/admin/event/registrationSearch.do?query.eventId=" +
-            CURRENT_EVENT;
-        } else {
-          console.log(
-            "It doesn't look like a badge number so lets just search neon accounts. User entered: " +
-              text
-          );
-          url =
-            "https://ce.app.neoncrm.com/np/admin/searchResult.do?key=" +
-            text +
-            "&search=Search&searchType=1";
-        }
-      }
+// ============================================================================
+// ERROR MESSAGE HANDLER
+// ============================================================================
+// Listens for error messages from content scripts and stores them in
+// chrome.storage.local for the popup to display.
+//
+// The user-friendly templates live in shared/js/constants-base.js
+// (ERROR_MESSAGES) so the service worker, content scripts, and popup all
+// reference the same table. importScripts at the top of this file makes
+// ERROR_MESSAGES available here as a global.
+
+/**
+ * Persist an error record in chrome.storage.local under STORAGE_KEY.REGISTRATION_ERROR.
+ * popup.js reads this key and renders an alert on the next popup open.
+ *
+ * @param {string} errorType    -- one of the keys in ERROR_MESSAGES
+ * @param {*}      originalError -- Error object or string from the caller
+ * @param {object} context       -- optional debug data (accountId, etc.)
+ */
+async function recordErrorInStorage(errorType, originalError, context = {}) {
+  const timestamp = Date.now();
+
+  console.error(
+    `[BackgroundScript] Recording error: ${errorType}`,
+    { originalError, context }
+  );
+
+  const messageTemplate = ERROR_MESSAGES[errorType] || ERROR_MESSAGES.UNKNOWN_ERROR;
+
+  const errorState = {
+    type: errorType,
+    timestamp,
+    title:  messageTemplate.title,
+    detail: messageTemplate.detail,
+    action: messageTemplate.action,
+    debugInfo: {
+      originalMessage: String(originalError),
+      context,
+      timestamp: new Date(timestamp).toISOString(),
+    },
+  };
+
+  await chrome.storage.local.set({ [STORAGE_KEY.REGISTRATION_ERROR]: errorState });
+  console.log("[BackgroundScript] Error stored for popup display:", errorState);
+
+  // Also append to a bounded ring buffer for the debug report's error history.
+  // REGISTRATION_ERROR above is the single latest error the popup shows; this
+  // keeps the last 20 so IT can spot recurring failures.
+  try {
+    const logResult = await chrome.storage.local.get(STORAGE_KEY.ERROR_LOG);
+    const log = Array.isArray(logResult[STORAGE_KEY.ERROR_LOG]) ? logResult[STORAGE_KEY.ERROR_LOG] : [];
+    log.push({
+      type: errorType,
+      title: messageTemplate.title,
+      message: String(originalError),
+      context,
+      at: new Date(timestamp).toISOString(),
+    });
+    await chrome.storage.local.set({ [STORAGE_KEY.ERROR_LOG]: log.slice(-20) });
+  } catch (e) {
+    console.warn("[BackgroundScript] could not append to ERROR_LOG:", e?.message);
+  }
+}
+
+/**
+ * Message listener for RECORD_REGISTRATION_ERROR messages from content scripts.
+ *
+ * IMPORTANT: this listener is async -- we MUST return true to keep the
+ * sendResponse channel open until the storage write completes, otherwise
+ * the caller's callback may fire before storage actually updates.
+ */
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.action === ACTION.ARM_POST_CHECKIN_REDIRECT) {
+    const tabId = sender?.tab?.id;
+    if (tabId != null) {
+      armedPostCheckin.set(tabId, Date.now());
+      console.log(`background.js: armed post-check-in redirect for tab ${tabId}`);
     }
-    chrome.tabs.update(tab.id, { url: url });
-  });
+    sendResponse({ ok: true });
+    return;
+  }
+
+  // Manager Debug Walk finished (or halted) -- open the report tab and clear
+  // the walk flag so subsequent normal clicks aren't hijacked. DEBUG_REPORT is
+  // left in place for the report page to read.
+  if (message?.action === ACTION.OPEN_DEBUG_REPORT) {
+    chrome.tabs.create({ url: chrome.runtime.getURL("debug-report.html") });
+    chrome.storage.local.remove(STORAGE_KEY.DEBUG_WALK_ACTIVE);
+    console.log("background.js: opened debug report tab and cleared DEBUG_WALK_ACTIVE");
+    sendResponse({ ok: true });
+    return;
+  }
+
+  if (message.type === "RECORD_REGISTRATION_ERROR") {
+    recordErrorInStorage(message.errorType, message.originalError, message.context)
+      .then(()  => sendResponse({ success: true }))
+      .catch(err => {
+        console.error("background.js: recordErrorInStorage failed:", err);
+        sendResponse({ success: false, error: err?.message });
+      });
+    return true; // keep sendResponse alive for async work
+  }
 });
 
-//This will start a registrant search for us
-function searchRegistrant(tabId, keyword) {
-  chrome.tabs.sendMessage(
-    tabId,
-    { action: "Search Registrant Name", keyword: keyword },
-    function () {}
-  );
-}
+// end js/background.js

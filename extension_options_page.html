@@ -1,58 +1,203 @@
+<!-- extension_options_page.html -->
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Badge Utility Options</title>
-    <style>
-        body: {
-            padding: 10px;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <title>CONvergence Check-In — Options</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 16px;
+      max-width: 400px;
+    }
+
+    h2 {
+      font-size: 16px;
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 4px;
+      font-weight: bold;
+      font-size: 13px;
+    }
+
+    input[type="text"],
+    input[type="password"] {
+      width: 100%;
+      padding: 6px;
+      box-sizing: border-box;
+      margin-bottom: 12px;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+      font-size: 13px;
+    }
+
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .checkbox-row input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+    }
+
+    .checkbox-row label {
+      margin: 0;
+      font-weight: normal;
+      cursor: pointer;
+    }
+
+    .mode-row {
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #eee;
+    }
+
+    .mode-row .mode-label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: bold;
+      font-size: 13px;
+    }
+
+    .mode-row .mode-option {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-right: 16px;
+      font-weight: normal;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .mode-row .mode-option input[type="radio"] {
+      width: 14px;
+      height: 14px;
+      cursor: pointer;
+    }
+
+    #password-row {
+      display: none;
+      margin-bottom: 12px;
+    }
+
+    #status {
+      min-height: 20px;
+      margin-bottom: 8px;
+      font-size: 13px;
+      font-weight: bold;
+      color: #155724;
+    }
+
+    #status.error { color: #721c24; }
+
+    button {
+      padding: 8px 20px;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    button:hover { background: #0056b3; }
+
+    .panel {
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+      padding: 10px;
+      margin-bottom: 12px;
+      font-size: 12px;
+    }
+    .panel h3 { font-size: 13px; margin: 0 0 6px; }
+    .panel button { margin: 0 6px 6px 0; padding: 5px 10px; font-size: 12px; }
+    .panel .issue { margin: 2px 0; }
+    .panel .issue.error { color: #721c24; }
+    .panel .issue.warning { color: #7a5c00; }
+    .panel .allgood { color: #155724; }
+    .panel pre {
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 220px;
+      overflow: auto;
+      background: #f7f7f7;
+      padding: 8px;
+      border-radius: 4px;
+      font-size: 11px;
+    }
+    .maint-status { min-height: 16px; margin: 4px 0; font-weight: bold; }
+  </style>
 </head>
-
 <body>
-<p>
+  <h2>CONvergence Check-In — Options</h2>
 
-    <label>
-        Workstation ID:
-        <input type="text" id="workstation">
+  <div class="mode-row">
+    <span class="mode-label">Extension Mode</span>
+    <label class="mode-option">
+      <input type="radio" name="ext-mode" value="reg" id="mode-reg">
+      <span>Registration (badge check-in)</span>
     </label>
-
-</p>
-     <!--
-<p>
-    Scanner:
-    <select id="scanner">
-        <option value="none">None</option>
-        <option value="one">One</option>
-        <option value="two">Two</option>
-    </select>
-</p>
-
-<p>
-
-    <label>
-        Websocket Server:
-        <input type="text" id="websocketserver">
+    <label class="mode-option">
+      <input type="radio" name="ext-mode" value="merch" id="mode-merch">
+      <span>Merchandise pickup</span>
     </label>
+  </div>
 
-</p>
-         -->
-<p>
+  <div class="checkbox-row">
+    <input type="checkbox" id="mngtoverride">
+    <label for="mngtoverride">Enable Management Override</label>
+  </div>
 
-    <label>
-        <input type="checkbox" id="mngtoverride">
-        Management Override Enabled
+  <div id="password-row">
+    <label for="mngt-password">Management Password:</label>
+    <input type="password" id="mngt-password" placeholder="Enter password to enable override">
+  </div>
+
+  <!-- Behavior sub-mode (Regular vs Debugging). Only visible when -->
+  <!-- Management Override is checked. Persisted in STORAGE_KEY.DEBUG_MODE. -->
+  <div id="behavior-row" class="mode-row" style="display:none;">
+    <span class="mode-label">Behavior (Manager only)</span>
+    <label class="mode-option">
+      <input type="radio" name="behavior-mode" value="regular" id="behavior-regular">
+      <span>Regular</span>
     </label>
+    <label class="mode-option">
+      <input type="radio" name="behavior-mode" value="debugging" id="behavior-debugging">
+      <span>Debugging (pre-con field check walk)</span>
+    </label>
+  </div>
 
-<p id="insertinputs"></p>
+  <div id="status"></div>
+  <button id="save">Save Options</button>
 
-</p>
+  <!-- Config Doctor — validates config.js for silent annual-update mistakes. -->
+  <div id="config-check" class="panel"></div>
 
+  <!-- Maintenance (manager only) — storage inspector, cache reset, connectivity. -->
+  <div id="maintenance-row" class="panel" style="display:none;">
+    <h3>Maintenance</h3>
+    <button type="button" id="check-tab">Check Neon tab(s)</button>
+    <button type="button" id="clear-cache">Clear cached scrape data</button>
+    <div id="maint-status" class="maint-status"></div>
+    <details>
+      <summary>Storage contents</summary>
+      <pre id="storage-dump"></pre>
+    </details>
+  </div>
 
-<div id="status"></div>
-<button id="save">Save</button>
-
-<script src="js/options.js"></script>
-
+  <script src="shared/js/constants-base.js"></script>
+  <script src="shared/js/crypto.js"></script>
+  <script src="config.js"></script>
+  <script src="js/constants.js"></script>
+  <script src="js/config-doctor.js"></script>
+  <script src="js/options.js"></script>
 </body>
 </html>
+<!-- end extension_options_page.html -->
