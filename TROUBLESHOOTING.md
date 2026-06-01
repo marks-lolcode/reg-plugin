@@ -133,8 +133,8 @@ at all). To see exactly which fields resolve, run the **Manager Debug Walk**:
 
 1. Open the extension Options, tick **Manager Override**, enter the manager
    password, choose **Debugging**, and Save.
-2. In Neon, open the **account page** of a training-event (142) attendee and click
-   the extension toolbar icon.
+2. In Neon, open the **account page** of a real attendee and click the extension
+   toolbar icon.
 3. The extension walks Account → Event Registration → first Attendee and opens a
    report tab listing every field per page and flagging anything it can't find in
    red. (If it halts early, the report still opens with a note explaining where.)

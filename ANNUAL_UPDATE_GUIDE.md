@@ -220,8 +220,7 @@ find — no copy/paste required.
    `chrome://extensions` → Details → Extension options).
 2. Tick **Manager Override**, enter the manager password, choose **Debugging**,
    and **Save**.
-3. In Neon, open the **account page** of any attendee for the training event
-   (event 142). Click the extension toolbar icon.
+3. In Neon, open the **account page** of any real attendee. Click the extension toolbar icon.
 4. The extension walks Account → Event Registration → first Attendee and opens a
    **Debug Walk Report** tab with one section per page: every field + value, plus
    a red **NOT FOUND** list for any label the extension expects but didn't see.
@@ -283,11 +282,10 @@ Update the year to the current year.
 Before the convention weekend:
 
 1. Load the updated extension on a test computer (see `SETUP.md`)
-2. Log into Neon and navigate to an attendee on the **training event**
-   (event ID 142)
-3. The extension should activate (icon turns green or yellow)
-4. Click the icon and verify the popup shows the correct attendee info
-5. Do NOT complete a check-in on real attendees during testing
+2. Run the **Manager Debug Walk** (Options → Manager Override + Debugging mode) against
+   a real Neon attendee page to verify every field resolves correctly (see Step 3 above).
+3. The Debug Walk report should show no red NOT FOUND items.
+4. Do NOT complete an actual check-in during testing.
 
 If the extension does not activate or shows errors, see `TROUBLESHOOTING.md`
 or contact IT.
