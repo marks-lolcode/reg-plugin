@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - MUST not use verbose answers
 - MUST only provide changes in files
 - MUST clearly identify where in the file the new/changed code should go
-- MUST update project files (`README.md`, `DEVELOPER.MD`, `ANNUAL_UPDATE_GUIDE.md`, `TROUBLESHOOTING.md`, `SETUP.MD`) as changes are made
+- MUST update project files (`README.md`, `DEVELOPER.md`, `ANNUAL_UPDATE_GUIDE.md`, `TROUBLESHOOTING.md`, `SETUP.md`) as changes are made
 
 ## What this is
 A Chrome Manifest V3 extension used by CONvergence Registration volunteers to validate and complete attendee check-ins inside Neon CRM. The extension itself has no build step — files are loaded directly by Chrome as-is. A Playwright test harness lives in `tests/`; `package.json`, `playwright.config.ts`, and `tsconfig.json` exist only to support those tests (run `npm test`).
@@ -16,13 +16,21 @@ A Chrome Manifest V3 extension used by CONvergence Registration volunteers to va
 - After editing any file: click the refresh icon on the extension card in `chrome://extensions`.
 - Inspect the service worker: extension card → Details → "Inspect views: service worker".
 - Inspect content scripts: open DevTools on the Neon page itself.
-- Test event in Neon has ID 142 ("CONvergence Example For Training Only") — use this, never a real registration.
+- Event ID 142 ("CONvergence Example For Training Only") exists in `config.js` as a testEventName so the extension accepts it without triggering wrong-year errors. It does not have all Neon custom fields and is not suitable for testing full check-in functionality — use real attendee data for any field-detection or end-to-end testing.
 - Testing manager-override password is `reggie` (its hash lives in `config.js`).
 
 ## How to run tests
 - `npm install` once to fetch Playwright.
 - `npm test` runs the full suite; `npm run test:smoke` runs `green-adult-clean` only; `npm run test:headed` runs with a visible Chrome window.
 - Specs live in `tests/specs/`, fixtures in `tests/fixtures/`, helpers in `tests/helpers/`. The harness loads the unpacked extension via Playwright's `--disable-extensions-except` / `--load-extension` Chrome flags — there is no separate build step.
+
+## Annual training materials
+- `node tools/generate-training-pptx.js` generates three PowerPoint presentations in `TRAINING/`: reg-checkin, merch-checkin, management. Run after updating config or volunteer scripts.
+- `tools/generate-password-hash.html` — open locally to generate new SHA-256 hash for `CONFIG.managementPasswordHash` (do NOT upload to GitHub). Replace hash in `config.js` yearly or when rotating password.
+- All training updates enumerated in `ANNUAL_UPDATE_GUIDE.md`; keep in sync when config shape changes.
+
+## Project tracking
+- Beads issue tracking: `bd ready` shows available work, `bd close <id>` marks done, `.beads/` excluded from upstream PRs.
 
 ## Architecture
 
@@ -101,7 +109,7 @@ Icons are rendered as `ImageData` (not paths) because `setIcon({ path })` is unr
 - **Blocking/warning conditions** are keyed by `CONDITION.*` and must appear in `CONFIG.conditionOrder` (in `config.js`) to be rendered.
 - **Hold messages order** in `CONFIG.holdMessages` MUST match the hold-index order used in `attendeeContact.js` (`[regHold, artShowHold, opsHold]`).
 - **Custom fields are resolved by label substring** (`CONFIG.fieldLabels`), then positional within duplicates — three fields share the label "HOLD", resolved by order. If Neon reorganizes fields, hand-trace the field indexes in DevTools against the live page.
-- **Attendee state object** built by `attendeeContact.js` and consumed by `popup.js` — if you change its shape, update both. Documented in `DEVELOPER.MD`.
+- **Attendee state object** built by `attendeeContact.js` and consumed by `popup.js` — if you change its shape, update both. Documented in `DEVELOPER.md`.
 - **Merch state object** built by `merch-attendee.js` and consumed by `popup-merch.js` — shape `{ accountId, attendeeId, legalName, preferredName, items: [{name, ordered, variant, alreadyPickedUp, pickedUpAt}] }`. Stored under `STORAGE_KEY.ATTENDEE_MERCH`. If you change the shape, update both files.
 - **Merch surfaced in REG flow** — `getAttendeeInfo()` (`js/attendeeContact.js`) calls `scrapeAttendeeMerch()` (a content-script global from `js/merch-attendee.js`) and attaches a pruned, names-only list of pending items as `attendee.merch` (filter: ordered AND not yet picked up). `popup.js`'s `buildAttendeeView` renders one "{name} Ordered" line above the action button per entry and switches the button text from `"Badge Issued"` to `"Badge Issued - Send to Merchandise"` when the array is non-empty. Already-picked-up items are filtered out before reaching popup.
 - **Mode awareness in content scripts:** any content script that reads/writes for a specific mode must check `STORAGE_KEY.EXTENSION_MODE` at the top of its IIFE and return early if it's not its mode, leaving message listeners registered. Today: `attendeeContact.js` bails in MERCH; `merch-attendee.js` bails in REG; `registrations.js` is mode-aware in its scrape rather than bailing (it serves both modes); `checkin-modal.js` and `attendee-modal.js` only auto-open in REG + Automated mode.

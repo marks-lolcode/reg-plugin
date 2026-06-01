@@ -80,6 +80,11 @@ When a volunteer confirms check-in, the extension automatically:
 
 | Document | Who Should Read It |
 |---|---|
+| `TRAINING/reg-checkin.html` | Registration check-in volunteers — graphical guide |
+| `TRAINING/merch-checkin.html` | Merchandise pickup volunteers — graphical guide |
+| `TRAINING/management.html` | Registration management / Help Desk leads — full manual |
+| `TRAINING/reg-checkin-card.html` | Print-ready reg station card (Chrome → Print → laminate) |
+| `TRAINING/merch-checkin-card.html` | Print-ready merch station card (Chrome → Print → laminate) |
 | `ANNUAL_UPDATE_GUIDE.md` | Anyone doing the yearly update |
 | `SETUP.md` | Anyone setting up a new workstation |
 | `TROUBLESHOOTING.md` | Anyone dealing with a problem at con |
