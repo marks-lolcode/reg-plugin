@@ -1,5 +1,6 @@
-testing manager pw is "reggie"
-
+<!-- DEV/TEST ONLY: the committed config.js hash is for the test password "reggie".
+     Leadership MUST regenerate it with a strong real password before any
+     production / Chrome Web Store release (see Step 2b). -->
 
 # CONvergence Check-In Extension — Annual Update Guide
 
@@ -80,25 +81,28 @@ to still pass the year check during testing.
 
 ### 2b. Management Override Password Hash
 
-The real password is never stored in the code. Instead, you store a
-"hash" — a scrambled version that the extension can check against without
-ever knowing the real password.
+The real password is never stored in the code. Instead, you store a salted
+PBKDF2-SHA256 **hash** — a scrambled, deliberately slow-to-crack version that
+the extension can check against without ever knowing the real password. Pick a
+**strong** password (long, not a dictionary word): the hash is visible to anyone
+who downloads the extension, and PBKDF2 only buys time against weak passwords.
 
 **To generate the hash:**
-1. Find the file `tools/generate-password-hash.html` on your computer
-   (it should be in the extension folder — do NOT open it from GitHub,
-   open it from your local copy)
+1. Open `tools/generate-password-hash.html` from your local copy of the repo
+   (open it from your computer, not from GitHub, so it can load the extension's
+   hashing code)
 2. Open it in Chrome by double-clicking it or dragging it into Chrome
 3. Type the new Management Override password into the box
 4. Click **Generate**
-5. Click **Copy Hash**
+5. Click **Copy hash**
 
 Now find this line in `config.js`:
 ```javascript
-managementPasswordHash: "REPLACE_THIS_WITH_GENERATED_HASH",  // ← UPDATE EACH YEAR
+managementPasswordHash: "pbkdf2-sha256$210000$...$...",  // ← UPDATE EACH YEAR
 ```
 
-Replace the text between the quote marks with the hash you just copied.
+Replace the text between the quote marks with the full `pbkdf2-sha256$...`
+string you just copied.
 
 **Important:** Never put the actual password in `config.js`.
 Share the real password with Help Desk staff verbally or through a
@@ -272,8 +276,8 @@ Update the year to the current year.
 1. Save both files (`config.js` and `manifest.json`)
 2. Commit the changes to GitHub with a message like:
    `Annual update for CONvergence 2027`
-3. Do **not** commit `tools/generate-password-hash.html` — it is excluded
-   by `.gitignore` for security reasons
+3. `tools/generate-password-hash.html` is safe to commit — it contains no
+   password or secret, only the (already public) hashing code.
 
 ---
 

@@ -1,5 +1,3 @@
-// testing mgr pw: reggie
-
 // config.js
 // ╔══════════════════════════════════════════════════════════════════════╗
 // ║ CONvergence Check-In Extension — ANNUAL CONFIGURATION                ║
@@ -152,17 +150,24 @@ const CONFIG = {
   // ── MANAGEMENT OVERRIDE PASSWORD ─────────────────────────────────────
   // Allows Help Desk staff to proceed past a red (blocked) status.
   //
-  // IMPORTANT: Only a HASH of the password is stored here — never the
-  // real password. This file is safe to commit to a public GitHub repo.
+  // IMPORTANT: Only a salted PBKDF2-SHA256 HASH of the password is stored
+  // here — never the real password. Format:
+  //   pbkdf2-sha256$<iterations>$<saltHex>$<hashHex>
+  // This file is safe to commit to a public GitHub repo: PBKDF2 makes the
+  // hash expensive to brute-force, so use a STRONG production password.
   //
   // To change the password each year:
-  // 1. Open tools/generate-password-hash.html in Chrome (locally only —
-  //    do NOT upload this file to GitHub)
+  // 1. Open tools/generate-password-hash.html in Chrome (from your local
+  //    copy)
   // 2. Type the new password and click Generate
-  // 3. Copy the hash and paste it below, replacing the old value
+  // 3. Copy the full pbkdf2-sha256$... string and paste it below
   // 4. Share the real password with Help Desk staff verbally or via a
   //    password manager — not GitHub, not email, not Slack
-  managementPasswordHash: "b1cc53f5f6e8209902436bff13802205f4f0fa16363201e8fb81d7131ead9140",  // ← UPDATE EACH YEAR
+  //
+  // The committed default below is the HASH of the dev/test password only
+  // (see CLAUDE.md). Leadership MUST regenerate this with a strong real
+  // password before any production / Chrome Web Store release.
+  managementPasswordHash: "pbkdf2-sha256$210000$70887f84385bb22373719ec1d6a6569a$f0522e07c60d1963d30748974968fa85da7e466188d8a12fcbd3ba0e1c5aac96",  // ← UPDATE EACH YEAR
 
   // ── CONDITION DISPLAY ORDER ──────────────────────────────────────────
   // Controls the order that blocking/warning conditions appear in the popup.

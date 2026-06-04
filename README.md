@@ -50,7 +50,7 @@ When a volunteer confirms check-in, the extension automatically:
 ├── shared/js/                       ← Framework-level helpers (icon cache, hashing, base constants)
 │   ├── constants-base.js            ← STATE, base STORAGE_KEY, ERROR_MESSAGES, dbg
 │   ├── background-core.js           ← Icon caching + setIcon (service worker uses)
-│   └── crypto.js                    ← SHA-256 hashPassword for the options page
+│   └── crypto.js                    ← Salted PBKDF2-SHA256 hashing/verification for the options page
 ├── js/
 │   ├── constants.js                 ← App-specific constants (extends STORAGE_KEY)
 │   ├── background.js                ← Service worker (page load listeners)
@@ -65,7 +65,7 @@ When a volunteer confirms check-in, the extension automatically:
 │   ├── config-doctor.js             ← validateConfig() — config.js self-check
 │   └── debug-report.js              ← Renders the Manager Debug Walk report
 └── tools/
-├── generate-password-hash.html  ← Run locally to hash the annual password
+├── generate-password-hash.html  ← Run locally to PBKDF2-hash the annual password
 └── field-diagnostic.html        ← Single-page field check (paste a DevTools dump)
 
 ## Key People

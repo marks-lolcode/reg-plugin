@@ -17,7 +17,7 @@ A Chrome Manifest V3 extension used by CONvergence Registration volunteers to va
 - Inspect the service worker: extension card → Details → "Inspect views: service worker".
 - Inspect content scripts: open DevTools on the Neon page itself.
 - Event ID 142 ("CONvergence Example For Training Only") exists in `config.js` as a testEventName so the extension accepts it without triggering wrong-year errors. It does not have all Neon custom fields and is not suitable for testing full check-in functionality — use real attendee data for any field-detection or end-to-end testing.
-- Testing manager-override password is `reggie` (its hash lives in `config.js`).
+- Testing manager-override password is `reggie` — DEV/TEST ONLY. The committed `CONFIG.managementPasswordHash` is the salted PBKDF2 hash of this test password; leadership must regenerate it with a strong real password before any production / Chrome Web Store release.
 
 ## How to run tests
 - `npm install` once to fetch Playwright.
@@ -26,7 +26,7 @@ A Chrome Manifest V3 extension used by CONvergence Registration volunteers to va
 
 ## Annual training materials
 - `node tools/generate-training-pptx.js` generates three PowerPoint presentations in `TRAINING/`: reg-checkin, merch-checkin, management. Run after updating config or volunteer scripts.
-- `tools/generate-password-hash.html` — open locally to generate new SHA-256 hash for `CONFIG.managementPasswordHash` (do NOT upload to GitHub). Replace hash in `config.js` yearly or when rotating password.
+- `tools/generate-password-hash.html` — open locally (from the repo copy, so it can load `shared/js/crypto.js`) to generate the salted PBKDF2-SHA256 hash for `CONFIG.managementPasswordHash`. Safe to commit (no secret). Replace hash in `config.js` yearly or when rotating password.
 - All training updates enumerated in `ANNUAL_UPDATE_GUIDE.md`; keep in sync when config shape changes.
 
 ## Project tracking
@@ -116,7 +116,7 @@ Icons are rendered as `ImageData` (not paths) because `setIcon({ path })` is unr
 - **Pop-up vs in-page modal (`STORAGE_KEY.POPUP_MODE` = `"automated"|"manual"`, default automated; managers pick on the options page).** In Automated mode on the eventReg page, `background.js` clears that tab's action popup via `chrome.action.setPopup({tabId, popup:""})`, so a toolbar click fires `chrome.action.onClicked` → `ACTION.SHOW_CHECKIN_MODAL` → `checkin-modal.js` re-scrapes (via `registrations.js` globals) and (re)draws an in-page modal scoped under `#cvg-checkin-modal`. It auto-opens on page load too. The **attendee page** (`attendeeEdit.do`) behaves the same way (Phase 2): `background.js` clears its per-tab popup in Automated REG mode, and `attendee-modal.js` (loaded after `attendeeContact.js`, calling its `getAttendeeInfo()` / `incrementBadge()` / `highlightICEField()` globals directly — same isolated world, no messaging) auto-opens + handles `SHOW_CHECKIN_MODAL`, mirroring `popup.js` `buildAttendeeView`/`completeCheckIn` inside the same `#cvg-checkin-modal` container. Both modals are **draggable by their header** via `makeDraggable()` in the shared `js/modal-drag.js` (loaded before each modal script); the dragged position is remembered in a module variable and reapplied on re-render. Account pages and Manual mode keep the classic `popup.html`.
 - **Merch field labels match by substring** like the rest of the form-label resolution. `CONFIG.merch.items[].source.label` and `pickupFieldLabel` are substrings of the actual Neon labels — keep them generic enough to survive minor copy edits but specific enough not to collide. Matcher modes: `"anyExcept"` (ordered if value differs from `notOrderedValue`; the value IS the variant) and `"substring"` (ordered if value contains `matchValue`; no variant).
 - **Date/time written to merch pickup fields** is `MM/DD/YYYY HH:MM` 24-hour, from `formatMerchDateTime()` in `merch-attendee.js`. Change there if Neon's text-field validation gets fussier.
-- **Management password** is only stored as a SHA-256 hex hash in `CONFIG.managementPasswordHash`. The plaintext goes nowhere in the repo. Hashing helper lives in `shared/js/crypto.js`.
+- **Management password** is only stored as a salted PBKDF2-SHA256 hash (format `pbkdf2-sha256$<iterations>$<saltHex>$<hashHex>`) in `CONFIG.managementPasswordHash`. The plaintext goes nowhere in the repo. Hashing/verification helpers (`generatePasswordHash`, `verifyPassword`) live in `shared/js/crypto.js`; `js/config-doctor.js` validates the stored string's shape.
 - **Debug logging:** use `dbg(...)` (defined in `shared/js/constants-base.js`) for chatty per-page-load traces, gated on `CONFIG.debug`. Keep `console.error` / `console.warn` for messages a developer always needs to see. The merch content script uses plain `console.log` with a `merch-attendee.js:` prefix so volunteers can read it directly when debugging field-label mismatches.
 
 ## Annual update surface area
