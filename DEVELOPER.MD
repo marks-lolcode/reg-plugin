@@ -177,6 +177,40 @@ merch:                 [{name: string}], // Pending merch (ordered, not yet pick
 
 ---
 
+## First-Time-Attendee Guide & No-Registration Modal
+
+Both features live on the account **Attendees tab**
+(`/admin/accounts/N/event-registrations?tab=Attendees`) — the only page that
+lists every registration record with its status. `accountPage.js`
+`processAttendeesTab()` runs on every load of that tab and does one sweep
+(`analyzeAttendeeRecords()`):
+
+- **First-time detection** — records whose status contains any
+  `REG_STATUS.EXCLUDED_FROM_HISTORY` substring (`"cancel"`, `"fail"`,
+  `"refund"`) are ignored. **More than one** remaining record ⇒ attended
+  before. **Exactly one**, for an event in `currentEventNames` /
+  `testEventNames` ⇒ first time. The result is written to
+  `STORAGE_KEY.FIRST_TIME` = `{ accountId, isFirstTime, recordCount, ts }`
+  on **every** visit (even manual navigation, independent of the auto-nav flag).
+- **Consumed by** `popup.js buildAttendeeView` and `attendee-modal.js
+  renderAttendeeModal`: when `FIRST_TIME.accountId === attendee.accountId` and
+  `isFirstTime`, they render a purple `.cvg-first-time` pill
+  ("🎀 First Time? Badge Ribbon!") above the Badge Issued button. The
+  `accountId` gate prevents a stale flag from a prior attendee leaking through.
+  Purely a visual cue — the answer is never recorded or validated.
+
+- **No-registration modal** — when the auto-nav flag is set but no valid
+  SUCCEEDED registration is found (no records at all, only
+  cancelled/failed/refunded, or wrong event), `processAttendeesTab()` calls
+  `showNoRegistrationModal()` — a self-styled centered modal (this page loads
+  no shared modal CSS) showing `ERROR_MESSAGES.NO_VALID_REGISTRATION`.
+  Genuinely-technical failures (table/columns not found) still use the yellow
+  `showAutoNavFailureBanner()` because those mean "retry," not "no registration."
+  Per-attendee wrong-event handling on the eventReg page is unchanged
+  (`CONDITION.WRONG_EVENT` red banner inside the check-in modal).
+
+---
+
 ## Neon Custom Field Indexes (verified 2025)
 
 All custom fields on the AttendeeEdit page use the pattern:
@@ -298,7 +332,7 @@ report tab. Gated behind Manager Override + **Debugging** on the options page
    `initiateDebugWalk()`, which arms `STORAGE_KEY.DEBUG_WALK_ACTIVE`, sends
    `ACTION.RUN_ACCOUNT_DEBUG_AUDIT` to the account content script (captures the About-page
    `.neon_nest_grid_row` fields *before* navigating), then navigates to the Attendees tab
-   (reusing `ACCOUNT_AUTO_NAV` / `autoClickFirstSucceededRegistration()`).
+   (reusing `ACCOUNT_AUTO_NAV` / `processAttendeesTab()`).
 2. `js/registrations.js` `maybeAdvanceDebugWalk()` enumerates the first attendee's custom-field
    rows, records the `eventreg` step, then clicks the first attendee.
 3. `js/attendeeContact.js` `runDebugAuditOnAttendeePage()` enumerates the attendee form, checks

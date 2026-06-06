@@ -40,6 +40,12 @@
       "run_at": "document_end"
     }
   ],
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/FirstTimeRibbon.png"],
+      "matches": ["https://ce.app.neoncrm.com/*"]
+    }
+  ],
   "permissions": ["storage", "tabs", "webNavigation", "scripting"],
   "host_permissions": [
     "https://ce.app.neoncrm.com/np/admin/event/*",

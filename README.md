@@ -28,6 +28,17 @@ Before allowing check-in, the extension verifies:
 - For Adult and Teen tickets, the volunteer is reminded to **verify age**
 - For Day Pass tickets, the pass is being used on the **correct day**
 
+It also gives the volunteer two visual cues:
+
+- **First-time attendee** — if this is the only registration on the account
+  (ignoring any cancelled, failed, or refunded ones), the Badge Issued screen
+  shows a purple **"🎀 First Time? Badge Ribbon!"** prompt. It's a reminder
+  only — nothing is recorded.
+- **No valid registration** — if an account has no usable registration for the
+  current event (no records, or only cancelled/failed/refunded/wrong-event
+  ones), a **"No valid event registration found"** pop-up appears so the
+  volunteer can send the attendee to the Help Desk.
+
 ## What It Does at Check-In
 
 When a volunteer confirms check-in, the extension automatically:

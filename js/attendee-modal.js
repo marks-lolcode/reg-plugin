@@ -235,9 +235,24 @@ async function renderAttendeeModal(attendee) {
   } else if (hasActiveHold) {
     const btn = aEl("button", { className: "btn-no-issue", textContent: "⛔ DO NOT ISSUE BADGE", disabled: true });
     body.appendChild(btn);
-  } else if (fixableReasons.length === 0 || managementOverride) {
+  } else if ((fixableReasons.length === 0 || managementOverride) && !hasBlockingYellow) {
+    // hasBlockingYellow guard: a missing REQUIRED field (today: emergency
+    // contact / ICE) suppresses BOTH the first-time ribbon and the Badge
+    // Issued button even under Manager Override. Fill ICE + Re-check first.
     const pendingMerch    = Array.isArray(attendee.merch) ? attendee.merch : [];
     const hasPendingMerch = pendingMerch.length > 0;
+
+    // First-time-attendee guide (purely visual). Set on the account Attendees
+    // tab by accountPage.js, keyed by accountId so a stale flag can't leak.
+    const ftResult = await chrome.storage.local.get(STORAGE_KEY.FIRST_TIME);
+    const ft = ftResult[STORAGE_KEY.FIRST_TIME];
+    if (ft && ft.isFirstTime && String(ft.accountId) === String(attendee.accountId)) {
+      const ribbon = aEl("div", { className: "cvg-first-time" });
+      ribbon.appendChild(aEl("img", { src: chrome.runtime.getURL("assets/FirstTimeRibbon.png"), alt: "" }));
+      ribbon.appendChild(document.createTextNode("First Time? Badge Ribbon!"));
+      body.appendChild(ribbon);
+    }
+
     pendingMerch.forEach(m => {
       body.appendChild(aEl("div", { className: "cvg-merch-line", textContent: `${m.name} Ordered` }));
     });

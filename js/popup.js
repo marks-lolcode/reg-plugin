@@ -338,7 +338,7 @@ async function buildAccountView(account, tab) {
  * MANAGEMENT_OVERRIDE and DEBUG_MODE are both true. Sets up the walk
  * state in chrome.storage and navigates the tab to the same URL the
  * normal reg flow uses (so accountPage.js's existing
- * autoClickFirstSucceededRegistration takes over from there).
+ * processAttendeesTab() takes over from there).
  *
  * The walk's later steps live in registrations.js and attendeeContact.js;
  * each checks STORAGE_KEY.DEBUG_WALK_ACTIVE on page load and appends to
@@ -827,12 +827,29 @@ async function buildAttendeeView(attendee, tab) {
     noIssueBtn.textContent = "⛔ DO NOT ISSUE BADGE";
     noIssueBtn.disabled = true;
     body.appendChild(noIssueBtn);
-  } else if (fixableReasons.length === 0 || managementOverride) {
+  } else if ((fixableReasons.length === 0 || managementOverride) && !hasBlockingYellow) {
+    // hasBlockingYellow guard: a missing REQUIRED field (today: emergency
+    // contact / ICE) suppresses BOTH the first-time ribbon and the Badge
+    // Issued button even under Manager Override — the volunteer must fill ICE
+    // and Re-check first. Override bypasses red holds, not required fields.
+    //
     // Pending merch summary -- one bold line per ordered-not-picked-up item.
     // Populated by getAttendeeInfo in js/attendeeContact.js (REG mode only).
     // Same visual style as the merch-mode eventreg list for consistency.
     const pendingMerch    = Array.isArray(attendee.merch) ? attendee.merch : [];
     const hasPendingMerch = pendingMerch.length > 0;
+
+    // First-time-attendee guide (purely visual — no data recorded). The flag
+    // is set on the account Attendees tab by accountPage.js and keyed by
+    // accountId so a stale flag from a previous attendee can't leak through.
+    const ftResult = await chrome.storage.local.get(STORAGE_KEY.FIRST_TIME);
+    const ft = ftResult[STORAGE_KEY.FIRST_TIME];
+    if (ft && ft.isFirstTime && String(ft.accountId) === String(attendee.accountId)) {
+      const ribbon = el("div", { className: "cvg-first-time" });
+      ribbon.appendChild(el("img", { src: chrome.runtime.getURL("assets/FirstTimeRibbon.png"), alt: "" }));
+      ribbon.appendChild(document.createTextNode("First Time? Badge Ribbon!"));
+      body.appendChild(ribbon);
+    }
 
     pendingMerch.forEach(m => {
       const line = el("div", { textContent: `${m.name} Ordered` });

@@ -5,20 +5,27 @@ something here doesn't help, contact IT before the badge line backs up.
 
 ---
 
-## Yellow banner at the top of the Neon page: "No active CONvergence registration found"
+## Pop-up: "No valid event registration found"
 
-This appears when you click the extension icon on an account page and the
-extension navigates to the Attendees tab, but can't auto-open a
-registration. It is a **safe fallback**, not a check-in blocker.
+This modal appears when you click the extension icon on an account and the
+extension navigates to the Attendees tab, but the account has **no usable
+registration** for this year's event — no records at all, or only ones that
+are cancelled, failed, refunded, or for a different event. It is a **safe
+guard**, not a bug.
 
 What to do:
 
-1. Look at the Attendees table on the Neon page.
-2. If the attendee has a CONvergence registration with status `SUCCEEDED`,
-   click that row manually to open it.
-3. From there the rest of the check-in flow works as normal.
+1. Click **Dismiss**.
+2. Look at the Attendees table on the Neon page yourself.
+3. If you do see a CONvergence registration with status `SUCCEEDED`, click
+   that row manually to open it and continue check-in.
+4. Otherwise, send the attendee to the **Help Desk** to sort out their
+   registration.
 
-The banner also shows up in two other cases:
+## Yellow banner: "Could not find / read the Attendees table"
+
+Separate from the modal above, a yellow banner means a **technical** hiccup
+reading the page (not "no registration"):
 
 - **"Could not find the Attendees table — refresh and try again."** —
   the page took too long to load the registrations table. Reload the Neon

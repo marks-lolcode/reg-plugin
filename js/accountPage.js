@@ -408,150 +408,238 @@ function showAutoNavFailureBanner(message) {
   document.body.appendChild(bar);
 }
 
-// ── AUTO-CLICK: First SUCCEEDED registration on Attendees tab ───────────────
+// ── MODAL: No valid event registration found ────────────────────────────────
 
 /**
- * Called after the page navigates to the Attendees tab. Waits for the
- * registration table to load, then finds and clicks the first row whose
- * status is SUCCEEDED and whose event name matches either the current
- * config events or the test events.
+ * Centered modal injected on the account Attendees tab when the account has
+ * no usable registration to check in (no records at all, only cancelled/
+ * failed/refunded ones, or none matching the current/test event list).
  *
- * Priority: currentEventNames is checked first; only if no current
- * match is found do we fall back to testEventNames. This protects
- * against accidentally checking someone in to a training event when
- * a real registration also exists.
+ * Self-styled because this page does not load css/checkin-modal.css or
+ * css/brand.css — colors come from the BRAND global (constants-base.js).
  */
-async function autoClickFirstSucceededRegistration() {
-  // Was the auto-nav flag set by popup.js? If not, this is a normal
-  // page load and we should not auto-click anything.
+function showNoRegistrationModal() {
+  if (document.getElementById("cvg-no-reg-modal")) return;
+  const tpl = ERROR_MESSAGES.NO_VALID_REGISTRATION ?? ERROR_MESSAGES.NO_SUCCEEDED_REGISTRATION;
+
+  const overlay = document.createElement("div");
+  overlay.id = "cvg-no-reg-modal";
+  overlay.style.cssText =
+    "position:fixed; inset:0; z-index:100000; background:rgba(0,0,0,0.45); " +
+    "display:flex; align-items:center; justify-content:center; font-family:Arial,sans-serif;";
+
+  const card = document.createElement("div");
+  card.style.cssText =
+    "max-width:420px; width:90%; background:#fff; border-radius:8px; " +
+    "overflow:hidden; box-shadow:0 8px 30px rgba(0,0,0,0.3);";
+
+  const header = document.createElement("div");
+  header.textContent = tpl.title;
+  header.style.cssText = `background:${BRAND.red}; color:#fff; padding:14px 18px; font-size:17px; font-weight:bold;`;
+
+  const bodyEl = document.createElement("div");
+  bodyEl.style.cssText = "padding:18px; color:#333; font-size:14px; line-height:1.5;";
+  const detail = document.createElement("p");
+  detail.textContent = tpl.detail;
+  detail.style.cssText = "margin:0 0 12px;";
+  const action = document.createElement("p");
+  action.textContent = tpl.action;
+  action.style.cssText = "margin:0; font-weight:bold;";
+  bodyEl.appendChild(detail);
+  bodyEl.appendChild(action);
+
+  const footer = document.createElement("div");
+  footer.style.cssText = "padding:0 18px 18px; text-align:right;";
+  const btn = document.createElement("button");
+  btn.textContent = "Dismiss";
+  btn.style.cssText =
+    `background:${BRAND.purple}; color:#fff; border:none; border-radius:4px; ` +
+    "padding:8px 16px; font-size:14px; font-weight:bold; cursor:pointer;";
+  btn.addEventListener("click", () => overlay.remove());
+  footer.appendChild(btn);
+
+  card.appendChild(header);
+  card.appendChild(bodyEl);
+  card.appendChild(footer);
+  overlay.appendChild(card);
+  overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+// ── ANALYZE: One pass over the Attendees-tab registration rows ──────────────
+
+/**
+ * Single sweep of the Attendees table that serves two features at once:
+ *   1. First-time-attendee guide — counts records whose status is NOT
+ *      cancelled/failed/refunded (REG_STATUS.EXCLUDED_FROM_HISTORY). More
+ *      than one non-excluded record => attended before. Exactly one, for a
+ *      valid event => first time.
+ *   2. Auto-nav click target — the first SUCCEEDED row for a valid event,
+ *      preferring currentEventNames over testEventNames (so we never check
+ *      someone into a training event when a real registration also exists).
+ *
+ * Returns { records, nonExcludedCount, isFirstTime, firstValidLink,
+ *           matchedEventName, matchedEventSource }.
+ */
+function analyzeAttendeeRecords(tableBody, cols, currentNames, testNames) {
+  const rows = tableBody.querySelectorAll("tr");
+  const records = [];
+  let currentLink = null, currentEvt = "";
+  let testLink    = null, testEvt    = "";
+
+  for (const row of rows) {
+    const cells = row.querySelectorAll("td");
+    if (cells.length <= Math.max(cols.event, cols.status)) continue;
+
+    const status    = cells[cols.status]?.textContent?.trim() ?? "";
+    const eventName = cells[cols.event]?.textContent?.trim()  ?? "";
+    if (!status && !eventName) continue;
+
+    const lowerStatus = status.toLowerCase();
+    const excluded    = REG_STATUS.EXCLUDED_FROM_HISTORY.some(s => lowerStatus.includes(s));
+    const inCurrent   = currentNames.some(n => eventName.toLowerCase().includes(n.toLowerCase()));
+    const inTest      = testNames.some(n => eventName.toLowerCase().includes(n.toLowerCase()));
+
+    console.log(`accountPage.js: row - event: "${eventName}", status: "${status}", excluded=${excluded}`);
+    records.push({ eventName, status, excluded, isValidEvent: inCurrent || inTest });
+
+    if (status === REG_STATUS.SUCCEEDED && (inCurrent || inTest)) {
+      // Prefer eventRegDetails link, then the amount cell's link, then any link.
+      const link = row.querySelector("a[href*='eventRegDetails']")
+                ?? (cols.amount != null ? cells[cols.amount]?.querySelector("a") : null)
+                ?? row.querySelector("a");
+      if (link) {
+        if (inCurrent && !currentLink) { currentLink = link; currentEvt = eventName; }
+        else if (inTest && !testLink)  { testLink    = link; testEvt    = eventName; }
+      }
+    }
+  }
+
+  const nonExcluded = records.filter(r => !r.excluded);
+  // First time: exactly one record that isn't cancelled/failed/refunded AND
+  // it's for an event we recognise. More than one => returning attendee.
+  const isFirstTime = nonExcluded.length === 1 && nonExcluded[0].isValidEvent;
+
+  return {
+    records,
+    nonExcludedCount:   nonExcluded.length,
+    isFirstTime,
+    firstValidLink:     currentLink ?? testLink,
+    matchedEventName:   currentLink ? currentEvt : testEvt,
+    matchedEventSource: currentLink ? "currentEventNames" : (testLink ? "testEventNames" : ""),
+  };
+}
+
+// ── PROCESS: Attendees tab — capture first-time status, then auto-click ─────
+
+/**
+ * Runs on every load of the account Attendees tab. ALWAYS computes and stores
+ * the first-time-attendee flag (keyed by accountId) so it's available even on
+ * manual navigation. THEN, only when popup.js set the auto-nav flag, clicks
+ * the first valid SUCCEEDED registration — or shows the "no valid event
+ * registration found" modal when there isn't one.
+ */
+async function processAttendeesTab() {
+  const accountId = getAccountIdFromUrl();
+
   const stored = await new Promise(resolve => {
     chrome.storage.local.get(STORAGE_KEY.ACCOUNT_AUTO_NAV, (result) => {
       resolve(result[STORAGE_KEY.ACCOUNT_AUTO_NAV] ?? null);
     });
   });
+  const autoNav = !!stored;
 
-  if (!stored) {
-    console.log("accountPage.js: no auto-nav flag set, skipping auto-click");
-    return;
-  }
+  const asArray = v => (Array.isArray(v) ? v : [v]).filter(Boolean);
+  const currentNames = asArray(CONFIG.event.currentEventNames);
+  const testNames    = asArray(CONFIG.event.testEventNames);
 
-  // Merge current and test event names; we'll check current first when
-  // walking the table so they take priority.
-  const validEventNames = [
-    ...(stored.currentEventNames ?? []),
-    ...(stored.testEventNames ?? []),
-  ];
-
-  console.log(`accountPage.js: auto-nav active. Valid event names: [${validEventNames.join(", ")}]`);
-
-  if (validEventNames.length === 0) {
-    console.warn("accountPage.js: no valid event names configured");
-    chrome.storage.local.remove(STORAGE_KEY.ACCOUNT_AUTO_NAV);
-    return;
-  }
+  console.log(`accountPage.js: Attendees tab. autoNav=${autoNav} valid=[${[...currentNames, ...testNames].join(", ")}]`);
 
   try {
     await waitForElement("#accountEventAttendeesList .el-table__body", POLL_ATTEMPTS, POLL_MS);
-
     // Vue needs a tick to populate rows after the table element exists.
     await new Promise(r => setTimeout(r, 500));
 
     const tableBody = document.querySelector("#accountEventAttendeesList .el-table__body");
     if (!tableBody) {
       console.warn("accountPage.js: could not find table body");
-      showAutoNavFailureBanner("Could not find the Attendees table — refresh and try again.");
-      await appendDebugStepIfWalkActive("account", "error", { accountId: stored.accountId }, [
-        { severity: "error", message: "Could not find #accountEventAttendeesList .el-table__body on the page" },
-      ]);
-      await openDebugReportIfWalkActive();
-      chrome.storage.local.remove(STORAGE_KEY.ACCOUNT_AUTO_NAV);
+      if (autoNav) {
+        showAutoNavFailureBanner("Could not find the Attendees table — refresh and try again.");
+        await appendDebugStepIfWalkActive("account", "error", { accountId }, [
+          { severity: "error", message: "Could not find #accountEventAttendeesList .el-table__body on the page" },
+        ]);
+        await openDebugReportIfWalkActive();
+        chrome.storage.local.remove(STORAGE_KEY.ACCOUNT_AUTO_NAV);
+      }
       return;
     }
 
-    // Column indexes are discovered from the table header at runtime —
-    // Neon has reordered these in the past, so positional assumptions go
-    // stale silently. See findColumnIndexes() above.
+    // Column indexes are discovered from the header at runtime — Neon has
+    // reordered these before, so positional assumptions go stale silently.
     const cols = findColumnIndexes(tableBody);
     if (cols.event == null || cols.status == null) {
       console.warn("accountPage.js: could not locate Event/Status columns in header", cols);
-      showAutoNavFailureBanner("Could not read the Attendees table layout. Click the registration manually.");
-      await appendDebugStepIfWalkActive("account", "error", { accountId: stored.accountId, columnsFound: cols }, [
-        { severity: "error", message: "Could not locate Event/Status columns in the Attendees table header" },
-      ]);
-      await openDebugReportIfWalkActive();
+      if (autoNav) {
+        showAutoNavFailureBanner("Could not read the Attendees table layout. Click the registration manually.");
+        await appendDebugStepIfWalkActive("account", "error", { accountId, columnsFound: cols }, [
+          { severity: "error", message: "Could not locate Event/Status columns in the Attendees table header" },
+        ]);
+        await openDebugReportIfWalkActive();
+        chrome.storage.local.remove(STORAGE_KEY.ACCOUNT_AUTO_NAV);
+      }
+      return;
+    }
+
+    const analysis = analyzeAttendeeRecords(tableBody, cols, currentNames, testNames);
+    console.log(`accountPage.js: analysis → records=${analysis.records.length} nonExcluded=${analysis.nonExcludedCount} firstTime=${analysis.isFirstTime}`);
+
+    // Always store the first-time flag (keyed by accountId) so popup.js /
+    // attendee-modal.js can show the ribbon, even on manual navigation.
+    await chrome.storage.local.set({
+      [STORAGE_KEY.FIRST_TIME]: {
+        accountId,
+        isFirstTime: analysis.isFirstTime,
+        recordCount: analysis.nonExcludedCount,
+        ts:          Date.now(),
+      },
+    });
+
+    if (!autoNav) return; // manual nav: first-time captured, nothing to click
+
+    if (analysis.firstValidLink) {
+      console.log(`accountPage.js: clicking SUCCEEDED registration: ${analysis.matchedEventName} (from ${analysis.matchedEventSource})`);
+      await appendDebugStepIfWalkActive("account", "ok", {
+        accountId,
+        rowCount:           analysis.records.length,
+        matchedEventName:   analysis.matchedEventName,
+        matchedEventSource: analysis.matchedEventSource,
+        isFirstTime:        analysis.isFirstTime,
+      });
+      analysis.firstValidLink.click();
       chrome.storage.local.remove(STORAGE_KEY.ACCOUNT_AUTO_NAV);
       return;
     }
 
-    const rows = tableBody.querySelectorAll("tr");
-    console.log(`accountPage.js: found ${rows.length} registration rows in Attendees table; cols=${JSON.stringify(cols)}`);
-
-    for (const row of rows) {
-      const cells = row.querySelectorAll("td");
-      if (cells.length <= Math.max(cols.event, cols.status)) continue;
-
-      const status    = cells[cols.status]?.textContent?.trim() ?? "";
-      const eventName = cells[cols.event]?.textContent?.trim()  ?? "";
-
-      console.log(`accountPage.js: row - event: "${eventName}", status: "${status}"`);
-
-      if (status !== "SUCCEEDED") continue;
-
-      // currentEventNames first (higher priority), then testEventNames.
-      let isValidEvent = false;
-      let eventSource  = "";
-
-      if (stored.currentEventNames?.some(name => eventName.toLowerCase().includes(name.toLowerCase()))) {
-        isValidEvent = true;
-        eventSource  = "currentEventNames";
-      } else if (stored.testEventNames?.some(name => eventName.toLowerCase().includes(name.toLowerCase()))) {
-        isValidEvent = true;
-        eventSource  = "testEventNames";
-      }
-
-      if (!isValidEvent) {
-        console.log(`accountPage.js: skipping "${eventName}" - not in valid event list`);
-        continue;
-      }
-
-      // Prefer the link that points at eventRegDetails (the registration
-      // page we actually want). Fall back to the amount cell's link, then
-      // any link in the row, before giving up.
-      const link = row.querySelector("a[href*='eventRegDetails']")
-                ?? (cols.amount != null ? cells[cols.amount]?.querySelector("a") : null)
-                ?? row.querySelector("a");
-      if (link) {
-        console.log(`accountPage.js: clicking SUCCEEDED registration: ${eventName} (from ${eventSource})`);
-        await appendDebugStepIfWalkActive("account", "ok", {
-          accountId:           stored.accountId,
-          rowCount:            rows.length,
-          matchedEventName:    eventName,
-          matchedEventSource:  eventSource,
-        });
-        link.click();
-        chrome.storage.local.remove(STORAGE_KEY.ACCOUNT_AUTO_NAV);
-        return;
-      }
-
-      console.warn(`accountPage.js: matched "${eventName}" but no clickable link found in row`);
-    }
-
-    console.log("accountPage.js: no valid SUCCEEDED registration found");
-    showAutoNavFailureBanner("No active CONvergence registration found on this account. Click a registration row manually if appropriate.");
-    await appendDebugStepIfWalkActive("account", "error", { accountId: stored.accountId, rowCount: rows.length }, [
+    // No valid SUCCEEDED registration — covers "no attendee record at all",
+    // cancelled/failed/refunded-only, and wrong-event accounts.
+    console.log("accountPage.js: no valid SUCCEEDED registration found — showing modal");
+    showNoRegistrationModal();
+    await appendDebugStepIfWalkActive("account", "error", { accountId, rowCount: analysis.records.length }, [
       { severity: "error", message: "No SUCCEEDED registration matching currentEventNames or testEventNames was found in the Attendees table" },
     ]);
     await openDebugReportIfWalkActive();
     chrome.storage.local.remove(STORAGE_KEY.ACCOUNT_AUTO_NAV);
 
   } catch (err) {
-    console.error("accountPage.js: auto-click failed:", err.message);
-    showAutoNavFailureBanner("Could not find the Attendees table — refresh and try again.");
-    await appendDebugStepIfWalkActive("account", "error", { accountId: stored.accountId }, [
-      { severity: "error", message: `Auto-click threw: ${err.message}` },
-    ]);
-    await openDebugReportIfWalkActive();
-    chrome.storage.local.remove(STORAGE_KEY.ACCOUNT_AUTO_NAV);
+    console.error("accountPage.js: processAttendeesTab failed:", err.message);
+    if (autoNav) {
+      showAutoNavFailureBanner("Could not find the Attendees table — refresh and try again.");
+      await appendDebugStepIfWalkActive("account", "error", { accountId }, [
+        { severity: "error", message: `processAttendeesTab threw: ${err.message}` },
+      ]);
+      await openDebugReportIfWalkActive();
+      chrome.storage.local.remove(STORAGE_KEY.ACCOUNT_AUTO_NAV);
+    }
   }
 }
 
@@ -596,8 +684,8 @@ async function autoClickFirstSucceededRegistration() {
   const hasAttendeesTab = window.location.search.includes("tab=Attendees");
 
   if (isEventRegPage && hasAttendeesTab) {
-    console.log("accountPage.js: on Attendees tab, checking for auto-nav flag");
-    await autoClickFirstSucceededRegistration();
+    console.log("accountPage.js: on Attendees tab — capturing first-time status / auto-nav");
+    await processAttendeesTab();
   }
 })();
 
