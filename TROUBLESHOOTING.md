@@ -183,17 +183,25 @@ Enable **Manager Override** on the Options page to reveal the **Maintenance** pa
 
 ## The check-in panel auto-opens now (or I want the old click-to-open back)
 
-On the **registration (Attendees)** page the check-in list now appears
-automatically as an in-page panel (top-right) once the page loads — no click
-needed. Close it with the **✕**; click the extension icon to re-open it (it
-re-reads the page first).
+On the **account**, **registration (Attendees)**, and **attendee** pages the
+panel now appears automatically as an in-page panel (top-right) once the page
+loads — no click needed. Close it with the **✕**; click the extension icon to
+re-open it (it re-reads the page first).
 
+- On the **account page** the panel shows account holds / notes, or — for a
+  clean account — the attendee's full name and a **"Proceed to Check-In"**
+  button (this replaces clicking the icon to advance).
 - If it **didn't** open: make sure you're in Registration mode and that the
   page finished loading; click the extension icon to force it. A manager can
   also confirm the mode below.
 - To go back to the **old click-to-open popup**: open the extension Options,
-  enable **Manager Override**, and set **Pop-up behavior → Manual**. (Account
-  pages always behave the old way regardless.)
+  enable **Manager Override**, and set **Pop-up behavior → Manual**.
+
+> **IT note:** if the account/attendee panel never appears even in Automated
+> mode and the page console shows `accountPage.js` logs but **no**
+> `account-modal.js` logs, the extension is running a stale manifest — newly
+> added content-script files only register after you reload the **extension**
+> (`chrome://extensions` → ↻ on the card), not just the Neon page.
 
 ---
 

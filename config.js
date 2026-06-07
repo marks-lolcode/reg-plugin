@@ -129,11 +129,16 @@ const CONFIG = {
   // Staff-facing messages when a hold is active.
   // Each hold entry has a title (shown bold in popup) and body (resolution instructions).
   // Order must match: [regHold, artShowHold, opsHold]
+  // IMPORTANT: title is ALSO the Neon field-label matcher (case-INSENSITIVE substring;
+  // see readField/attendeeContact hold matching). Must remain a substring of the live
+  // Neon hold field label (capitalization no longer matters, but wording does).
+  // Display uppercasing is applied at render sites (popup.js, registrations.js,
+  // attendeeContact.js) via .toUpperCase().
   //
   holdMessages: [
-    { title: "Registration Hold", body: "Review notes on account or contact Registration Head.\nDo not release badge." },
-    { title: "Art Show Hold",     body: "Direct attendee to Art Show to pay, then return to Registration Help Desk.\nDo not release badge." },
-    { title: "Operations Hold",   body: "Direct the attendee to Operations.\nDo not release badge." },
+    { title: "Registration Hold", body: "• Review notes on account or contact Registration Head.\nDo not release badge until hold removed." },
+    { title: "Art Show Hold",     body: "• Direct attendee to Art Show to pay.\n• Remove hold when attendee returns with receipt.\nDo not release badge until hold removed." },
+    { title: "Operations Hold",   body: "• Direct the attendee to The Bridge (call Bridge on radio if they will not go).\n• Remove hold when an Operations Head or Sub-Head notifies Registration that hold can be removed.\nDo not release badge until hold removed." },
   ],
 
   // ── ATTENDEE PAGE MESSAGES ───────────────────────────────────────────
@@ -142,8 +147,8 @@ const CONFIG = {
   attendeeMessages: {
     missingIce:      "MISSING EMERGENCY CONTACT\nPlease ask the attendee for their emergency contact information.\nFill it in on the form, then click Re-check.",
     ageVerification: "AGE VERIFICATION REQUIRED\nVerify ID matches legal name. Attendee must be {age} or older (DOB before {cutoff}).",
-    alreadyIssued:   "ALREADY ISSUED\nThis badge was already issued. Please send attendee to Help Desk.",
-    nameMismatch:    "NAME MISMATCH\nBadge was issued to a different person.\nPlease send attendee to Help Desk.",
+    alreadyIssued:   "ALREADY ISSUED\nBadge already picked up.\nMust purchase replacement badge ($20 for weekend, full price for Day Pass).",
+    nameMismatch:    "NAME MISMATCH\nNon-Transferable name does not match attendee name.\n• If already issued, registrant transferred badge after pickup.\n• If comp, review comp reason and determine if badge swap can be approved.",
     noAccountId:     "NO ACCOUNT ID\nPlease direct attendee to Help Desk.",
   },
 
@@ -237,6 +242,7 @@ const CONFIG = {
           notOrderedValue: "Check the box then click to pick your shirt style and size",
         },
         pickupFieldLabel: "T-Shirt Picked Up",
+        image: "assets/2026-tee-shirt-01-1.jpg",
       },
       // Souvenir Guide -- radio field with a yes/no-style choice.
       // matchMode "substring" means: ordered if the selected value
@@ -251,6 +257,7 @@ const CONFIG = {
           matchValue: "Reserve a free printed Guide",
         },
         pickupFieldLabel: "Guide Picked Up",
+        image: "assets/SouvenirGuide.jpg",
       },
     ],
   },

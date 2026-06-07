@@ -353,10 +353,14 @@ function getRegistrationNotes() {
 function readField(fieldsTable, labelText) {
   if (!fieldsTable) return "";
 
+  // Label matching is case-insensitive (compare lowercased on both sides) so
+  // copy edits to Neon field capitalization don't break detection.
+  const needle = labelText.toLowerCase();
+
   // ── Standard layout: td.viewLabel → span.viewField ──
   for (const td of fieldsTable.querySelectorAll("td.viewLabel")) {
     const raw = td.childNodes[0]?.textContent?.trim() ?? "";
-    if (raw.includes(labelText)) {
+    if (raw.toLowerCase().includes(needle)) {
       const val = td.querySelector("span.viewField")?.textContent?.trim() ?? "";
       console.log(`readField [standard] "${labelText}" → "${val || "(empty)"}"`);
       return val;
@@ -366,7 +370,7 @@ function readField(fieldsTable, labelText) {
   // ── Dealer layout: plain <td> with inline "Label: <span>value</span>" ──
   for (const td of fieldsTable.querySelectorAll("td:not(.viewLabel):not(.viewField)")) {
     const raw = td.childNodes[0]?.textContent?.trim() ?? "";
-    if (raw.includes(labelText)) {
+    if (raw.toLowerCase().includes(needle)) {
       const val = td.querySelector("span")?.textContent?.trim() ?? "";
       console.log(`readField [dealer] "${labelText}" → "${val || "(empty)"}"`);
       return val;
@@ -860,21 +864,21 @@ function buildRegistrantState({
 
   if (regHold) {
     conditionsMap[CONDITION.REG_HOLD] = {
-      text:  CONFIG.holdMessages[0].title + "\n" + CONFIG.holdMessages[0].body,
+      text:  CONFIG.holdMessages[0].title.toUpperCase() + "\n" + CONFIG.holdMessages[0].body,
       isRed: true,
     };
   }
 
   if (artHold) {
     conditionsMap[CONDITION.ART_HOLD] = {
-      text:  CONFIG.holdMessages[1].title + "\n" + CONFIG.holdMessages[1].body,
+      text:  CONFIG.holdMessages[1].title.toUpperCase() + "\n" + CONFIG.holdMessages[1].body,
       isRed: true,
     };
   }
 
   if (opsHold) {
     conditionsMap[CONDITION.OPS_HOLD] = {
-      text:  CONFIG.holdMessages[2].title + "\n" + CONFIG.holdMessages[2].body,
+      text:  CONFIG.holdMessages[2].title.toUpperCase() + "\n" + CONFIG.holdMessages[2].body,
       isRed: true,
     };
   }

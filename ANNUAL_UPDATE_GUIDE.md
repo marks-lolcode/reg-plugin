@@ -166,6 +166,7 @@ merch: {
         notOrderedValue: "Check the box then click to pick your shirt style and size",
       },
       pickupFieldLabel: "T-Shirt Picked Up",
+      image: "assets/2026-tee-shirt-01-1.jpg",
     },
     {
       name: "Souvenir Guide",
@@ -176,6 +177,7 @@ merch: {
         matchValue: "Reserve a free printed Guide",
       },
       pickupFieldLabel: "Guide Picked Up",
+      image: "assets/SouvenirGuide.jpg",
     },
   ],
 },
@@ -194,6 +196,10 @@ For each item, confirm:
   on the attendee form. These are the fields the extension writes the
   date/time into. They must exist on the form (ask the Neon admin to
   add them if missing).
+- `image` -- (optional) path to a product photo shown to the left of the
+  "{name} Ordered" callout in the REG-flow popup and check-in modal. Drop
+  the file in `assets/`, add it to `web_accessible_resources` in
+  `manifest.json`, and point `image` at it. Omit to show text only.
 
 If a merch item is no longer offered this year, delete its entry. If
 new items are offered, copy an existing entry and adjust the labels.
@@ -316,6 +322,10 @@ Unless IT has specifically told you to:
 
 - Do not change `otherEventIds` — these are permanent training/test events
 - Do not change `holdMessages` order — it must match the field index order
+- Do not reword a `holdMessages` **title** unless the Neon hold field label
+  changed — the title is also used to find the hold field (now matched
+  case-insensitively, but it must stay a substring of the Neon label). Editing
+  a title's wording (not just capitalization) can stop a hold from being detected
 - Do not change anything in `js/` files — these are the code files
 
 If you are unsure whether something needs changing, ask IT before touching it.

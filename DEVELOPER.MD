@@ -125,10 +125,10 @@ read by `js/popup-merch.js`):
 
 | URL pattern | Script injected |
 |---|---|
-| `.../admin/accounts/*` | `js/accountPage.js` |
-| `.../attendeeEdit.do*` | `js/attendeeContact.js` |
-| `.../contactSelect.do*` | `js/attendeeContact.js` |
-| `.../eventRegDetails.do*` | `js/registrations.js` |
+| `.../admin/accounts/*` | `js/accountPage.js`, `js/modal-drag.js`, `js/account-modal.js` |
+| `.../attendeeEdit.do*` | `js/attendeeContact.js`, `js/merch-attendee.js`, `js/modal-drag.js`, `js/attendee-modal.js` |
+| `.../contactSelect.do*` | `js/attendeeContact.js`, `js/merch-attendee.js` |
+| `.../eventRegDetails.do*` | `js/registrations.js`, `js/modal-drag.js`, `js/checkin-modal.js` |
 
 ---
 
@@ -144,6 +144,11 @@ read by `js/popup-merch.js`):
 | `js/background.js` | Service worker -- page load listeners, icon updates, post-check-in redirect, error capture |
 | `js/attendeeContact.js` | Scrapes AttendeeEdit page, validates, writes check-in data |
 | `js/registrations.js` | Scrapes EventRegDetails page, validates registrants |
+| `js/accountPage.js` | Scrapes the account About page (holds/notes), captures first-time status + auto-navigates the Attendees tab; exposes `getAccountData()` / `getAccountIdFromUrl()` / `waitForElement()` to the account modal |
+| `js/checkin-modal.js` | Auto-opening in-page modal on EventRegDetails (Automated REG) — attendee list, mirrors popup |
+| `js/attendee-modal.js` | Auto-opening in-page modal on AttendeeEdit (Automated REG) — mirrors `buildAttendeeView`/`completeCheckIn`; header Re-check on Badge Issued |
+| `js/account-modal.js` | Auto-opening in-page modal on the account About page (Automated REG) — mirrors `buildAccountView`; holds/notes/clean + "Proceed to Check-In" |
+| `js/modal-drag.js` | Shared `makeDraggable(modalEl, handleEl)` for all three in-page modals |
 | `js/popup.js` | Reg-mode popup UI + top-level entry point. Reads `STORAGE_KEY.EXTENSION_MODE` first; if it's `"merch"`, delegates to `displayMerchPopup()` and skips the reg flow entirely. |
 | `js/popup-merch.js` | Merch-mode popup UI. On eventreg: attendee list with merch summary + Review Merch button per row. On attendeeEdit: checkbox per ordered item (already-picked-up items disabled), Confirm Pickup submit. |
 | `js/merch-attendee.js` | Merch-mode content script for attendeeEdit pages. Reads each `CONFIG.merch.items[]` entry by label substring, evaluates the matcher to decide `ordered`, reads each pickup field to decide `alreadyPickedUp`. Stores result in `STORAGE_KEY.ATTENDEE_MERCH`. On `ACTION.WRITE_MERCH_PICKUP`, writes the current date/time into the matching pickup field for each newly-checked item, then arms the post-checkin redirect and clicks Save. |
@@ -198,6 +203,33 @@ lists every registration record with its status. `accountPage.js`
   ("🎀 First Time? Badge Ribbon!") above the Badge Issued button. The
   `accountId` gate prevents a stale flag from a prior attendee leaking through.
   Purely a visual cue — the answer is never recorded or validated.
+- **Pending-merch callout** — the same two consumers render one
+  `.cvg-merch-line` per pending item (purple-outline callout matching the
+  ribbon). Each looks up `CONFIG.merch.items[].image` by item name and, when
+  present, shows the product photo to the left of "{name} Ordered". Images
+  must be in `assets/` and listed in `manifest.json`
+  `web_accessible_resources` (the modal renders on the Neon page).
+- **Badge-issued name handling** — on the `canIssueBadge` view both consumers
+  drop the Legal Name and ID-Required-date rows and show a large "Welcome to
+  CONvergence" greeting (`.cvg-welcome`) with the name on its own line
+  (`.cvg-welcome-name` — preferred name, falling back to the legal first name
+  when blank). For attendees who passed age verification (`AGE_VERIFIED` set +
+  an `ageVerification` reason), a "← Back to ID Check" link (`.cvg-back-idcheck`)
+  is rendered top-left on **every** post-ID-check screen (badge-issued,
+  missing-field, red/override — gated only on `wasAgeChecked`, never the ID step
+  itself); clicking clears `AGE_VERIFIED` and re-renders to the ID/age-verify
+  step. The **missing-required-field** screen (`hasBlockingYellow`, e.g. missing
+  ICE) shows NO name/ID rows — just the (enlarged) yellow alert + the field to
+  fix. Other non-issue views (blocked / override / help-desk) keep the legal
+  name. The Badge Issued button shows "Send to Merchandise" on a second line
+  (not after a dash) when merch is pending.
+- **Label/value rows** — info rows are flex `.kv-row`s (`.kv-label` +
+  `.kv-val`) with `align-items: baseline`, not `<table>` cells, so the smaller
+  label and larger value line up regardless of font size. Built by `addRow` /
+  `addAgeRow` (popup.js) and `addInfoRow` (attendee-modal.js).
+- **Alert sizing** — status banners (`.banner`, `.banner-stop`), reason text
+  (`.reason-title` / `.reason-body`), and `.helpdesk-note` are enlarged in both
+  `css/popup.css` and `css/checkin-modal.css`; keep the two in sync.
 
 - **No-registration modal** — when the auto-nav flag is set but no valid
   SUCCEEDED registration is found (no records at all, only
@@ -305,6 +337,11 @@ a matching page finishes loading (via `background.js`).
 2. Add the index to `config.js` → `fieldIndexes` (name it clearly)
 3. Add the staff-facing message to `config.js` → `holdMessages`
    (order must match the hold indexes array in `attendeeContact.js`)
+   - **Note:** each `holdMessages[].title` doubles as the Neon field-label
+     matcher (case-**in**sensitive substring; see `readField()` and the hold
+     loop in `attendeeContact.js`). Keep the title a substring of the live Neon
+     hold field label; capitalization no longer matters, but wording does. The
+     title is uppercased for *display* at the render sites (popup + modals).
 
 ---
 
@@ -378,7 +415,7 @@ renderers in `js/debug-report.js`.
 ## Auto-opening check-in modal
 
 In **Automated** pop-up mode (`STORAGE_KEY.POPUP_MODE`, default `"automated"`; managers can pick
-`"manual"` on the options page) the eventReg AND attendee pages show their check-in UI as an
+`"manual"` on the options page) the eventReg, attendee AND account pages show their UI as an
 **in-page modal** instead of the toolbar popup.
 
 **Phase 1 — eventReg list modal:**
@@ -397,13 +434,26 @@ In **Automated** pop-up mode (`STORAGE_KEY.POPUP_MODE`, default `"automated"`; m
   `buildAttendeeView` (override banner, age-verify gate, red/yellow banners, badge cell vs
   placeholder, info table, blocked → help-desk, Re-check section, Badge-Issued) and the
   `completeCheckIn` flow (`saveBadgeCSV` — replicated locally — then `incrementBadge`, then clear
-  `AGE_VERIFIED`). Reuses the `#cvg-checkin-modal` container/styles.
+  `AGE_VERIFIED`). Reuses the `#cvg-checkin-modal` container/styles. On the **Badge-Issued** screen a
+  **Re-check ↺ button is added to the header top-right** (next to ✕) via the `cvg-modal-header-actions`
+  container so staff can re-scrape without leaving the issued view.
 
-**Both pages:**
+**Phase 3 — account modal:**
+- `js/account-modal.js` (manifest-injected **after** `js/accountPage.js` + `js/modal-drag.js`, with
+  `css/brand.css` + `css/checkin-modal.css`) auto-opens on the account **About** page under the same
+  gate. Same isolated world, so it calls `accountPage.js`'s globals **directly**: `getAccountData()`
+  (scrape / Re-check), `getAccountIdFromUrl()`, `waitForElement()`. `renderAccountModal()` mirrors
+  `popup.js`'s `buildAccountView` (override banner; holds → red, with detail + Re-check under override;
+  notes → yellow + ack checkbox; clean → green banner + full name). Unlike the popup it does **not**
+  auto-navigate when clean — it shows a **"Proceed to Check-In"** button that sets
+  `STORAGE_KEY.ACCOUNT_AUTO_NAV` and navigates to the Attendees tab (where `processAttendeesTab()`
+  auto-clicks the registration). Reuses the `#cvg-checkin-modal` container/styles.
+
+**All three pages:**
 - `js/background.js` `applyPopupForTab()` clears the tab's action popup (`setPopup({tabId, popup:""})`)
-  in REG+Automated mode for `page === "registrations"` and `page === "attendee"`, so a toolbar click
-  fires `chrome.action.onClicked` → `ACTION.SHOW_CHECKIN_MODAL` (re-scrape + re-open). Account pages
-  and Manual mode keep `popup.html`. Toggling `POPUP_MODE` re-applies the active eventReg tab
+  in REG+Automated mode for `page === "registrations"`, `"attendee"`, and `"account"`, so a toolbar
+  click fires `chrome.action.onClicked` → `ACTION.SHOW_CHECKIN_MODAL` (re-scrape + re-open). Manual
+  mode keeps `popup.html`. Toggling `POPUP_MODE` re-applies the active eventReg/attendee/account tab
   immediately.
 - **Draggable:** `js/modal-drag.js` (shared, loaded before each modal script) exposes
   `makeDraggable(modalEl, handleEl)`. Header `mousedown` switches the modal to `left/top` and drags it

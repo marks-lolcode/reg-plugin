@@ -68,11 +68,14 @@ When a volunteer confirms check-in, the extension automatically:
 │   ├── popup.js                     ← Reg-mode popup UI + mode dispatcher
 │   ├── popup-merch.js               ← Merch-mode popup UI (Merchandise pickup)
 │   ├── options.js                   ← Options page logic (mode toggle + override)
-│   ├── accountPage.js               ← Account page auto-nav
+│   ├── accountPage.js               ← Account page scrape + auto-nav
+│   ├── account-modal.js             ← Auto-opening in-page account modal (holds/notes/Proceed)
 │   ├── attendeeContact.js           ← AttendeeEdit page logic (REG mode)
+│   ├── attendee-modal.js            ← Auto-opening in-page attendee check-in modal
 │   ├── merch-attendee.js            ← AttendeeEdit page logic (MERCH mode)
 │   ├── registrations.js             ← EventRegDetails page logic (both modes)
 │   ├── checkin-modal.js             ← Auto-opening in-page check-in modal (eventReg)
+│   ├── modal-drag.js                ← Shared makeDraggable() for the in-page modals
 │   ├── config-doctor.js             ← validateConfig() — config.js self-check
 │   └── debug-report.js              ← Renders the Manager Debug Walk report
 └── tools/

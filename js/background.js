@@ -101,8 +101,13 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
   if (changes[STORAGE_KEY.POPUP_MODE]) {
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     const tab  = tabs?.[0];
-    if (tab && (tab.url ?? "").includes("eventRegDetails")) {
+    const url  = tab?.url ?? "";
+    if (tab && url.includes("eventRegDetails")) {
       await applyPopupForTab(tab.id, "registrations");
+    } else if (tab && url.includes("attendeeEdit")) {
+      await applyPopupForTab(tab.id, "attendee");
+    } else if (tab && url.includes("/admin/accounts/")) {
+      await applyPopupForTab(tab.id, "account");
     }
   }
 });
@@ -118,10 +123,10 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
  */
 async function applyPopupForTab(tabId, page) {
   let popup = "popup.html";
-  // The eventReg and attendee pages both use the in-page modal in Automated
-  // REG mode, so clear their per-tab popup (an empty string makes a toolbar
-  // click fire chrome.action.onClicked → SHOW_CHECKIN_MODAL → the modal).
-  if (page === "registrations" || page === "attendee") {
+  // The eventReg, attendee and account pages all use the in-page modal in
+  // Automated REG mode, so clear their per-tab popup (an empty string makes a
+  // toolbar click fire chrome.action.onClicked → SHOW_CHECKIN_MODAL → modal).
+  if (page === "registrations" || page === "attendee" || page === "account") {
     const r = await chrome.storage.local.get({
       [STORAGE_KEY.POPUP_MODE]:     "automated",
       [STORAGE_KEY.EXTENSION_MODE]: EXTENSION_MODE.REG,

@@ -13,7 +13,8 @@
       "matches": [
         "https://ce.app.neoncrm.com/admin/accounts/*"
       ],
-      "js": ["shared/js/constants-base.js", "config.js", "js/constants.js", "js/accountPage.js"],
+      "js": ["shared/js/constants-base.js", "config.js", "js/constants.js", "js/accountPage.js", "js/modal-drag.js", "js/account-modal.js"],
+      "css": ["css/brand.css", "css/checkin-modal.css"],
       "run_at": "document_end"
     },
     {
@@ -42,7 +43,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["assets/FirstTimeRibbon.png"],
+      "resources": ["assets/FirstTimeRibbon.png", "assets/2026-tee-shirt-01-1.jpg", "assets/SouvenirGuide.jpg"],
       "matches": ["https://ce.app.neoncrm.com/*"]
     }
   ],

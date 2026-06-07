@@ -213,19 +213,21 @@ function buildFieldIndex() {
   //   Dealer:   Art(22), Operations(23), Registration(24)
   //
   // holdMessages titles: [0]="Registration Hold", [1]="Art Show Hold", [2]="Operations Hold"
-  const REG_TITLE = CONFIG.holdMessages[0].title; // "Registration Hold"
-  const ART_TITLE = CONFIG.holdMessages[1].title; // "Art Show Hold"
-  const OPS_TITLE = CONFIG.holdMessages[2].title; // "Operations Hold"
+  // Lowercased so label matching is case-insensitive (matches readField).
+  const REG_TITLE = CONFIG.holdMessages[0].title.toLowerCase(); // "registration hold"
+  const ART_TITLE = CONFIG.holdMessages[1].title.toLowerCase(); // "art show hold"
+  const OPS_TITLE = CONFIG.holdMessages[2].title.toLowerCase(); // "operations hold"
 
   for (const [idxStr, lbl] of Object.entries(labelByIndex)) {
     const idx = parseInt(idxStr, 10);
-    if (lbl.includes(REG_TITLE)) {
+    const lblLc = lbl.toLowerCase();
+    if (lblLc.includes(REG_TITLE)) {
       index.registrationHold = idx;
       console.log(`attendeeContact.js: registrationHold matched by label at index ${idx}`);
-    } else if (lbl.includes(ART_TITLE)) {
+    } else if (lblLc.includes(ART_TITLE)) {
       index.artShowHold = idx;
       console.log(`attendeeContact.js: artShowHold matched by label at index ${idx}`);
-    } else if (lbl.includes(OPS_TITLE)) {
+    } else if (lblLc.includes(OPS_TITLE)) {
       index.operationsHold = idx;
       console.log(`attendeeContact.js: operationsHold matched by label at index ${idx}`);
     }
@@ -630,21 +632,21 @@ async function getAttendeeInfo() {
 
   if (regHold) {
     freshConditions[CONDITION.REG_HOLD] = {
-      text:  CONFIG.holdMessages[0].title + "\n" + CONFIG.holdMessages[0].body,
+      text:  CONFIG.holdMessages[0].title.toUpperCase() + "\n" + CONFIG.holdMessages[0].body,
       isRed: true,
     };
   }
 
   if (artHold) {
     freshConditions[CONDITION.ART_HOLD] = {
-      text:  CONFIG.holdMessages[1].title + "\n" + CONFIG.holdMessages[1].body,
+      text:  CONFIG.holdMessages[1].title.toUpperCase() + "\n" + CONFIG.holdMessages[1].body,
       isRed: true,
     };
   }
 
   if (opsHold) {
     freshConditions[CONDITION.OPS_HOLD] = {
-      text:  CONFIG.holdMessages[2].title + "\n" + CONFIG.holdMessages[2].body,
+      text:  CONFIG.holdMessages[2].title.toUpperCase() + "\n" + CONFIG.holdMessages[2].body,
       isRed: true,
     };
   }
