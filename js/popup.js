@@ -224,23 +224,24 @@ async function buildAccountView(account, tab) {
       // ── MANAGER OVERRIDE: Show detailed holds with resolution instructions ──
       banner.appendChild(el("div", { className: "banner-stop", textContent: "⛔ ACCOUNT HOLDS" }));
       
+      // holdMessages order is [0]=reg, [1]=art, [2]=ops (see config.js).
       const holdsList = [];
       if (holds.registrationHold) {
         holdsList.push({
-          title: CONFIG.holdMessages[2].title,
-          body: CONFIG.holdMessages[2].body
+          title: CONFIG.holdMessages[0].title.toUpperCase(),
+          body: CONFIG.holdMessages[0].body
         });
       }
       if (holds.artShowHold) {
         holdsList.push({
-          title: CONFIG.holdMessages[1].title,
+          title: CONFIG.holdMessages[1].title.toUpperCase(),
           body: CONFIG.holdMessages[1].body
         });
       }
       if (holds.operationsHold) {
         holdsList.push({
-          title: CONFIG.holdMessages[0].title,
-          body: CONFIG.holdMessages[0].body
+          title: CONFIG.holdMessages[2].title.toUpperCase(),
+          body: CONFIG.holdMessages[2].body
         });
       }
 
@@ -251,10 +252,7 @@ async function buildAccountView(account, tab) {
           className: "reason-title", 
           textContent: hold.title 
         }));
-        block.appendChild(el("div", { 
-          className: "reason-body", 
-          textContent: hold.body 
-        }));
+        block.appendChild(buildReasonBody(hold.body));
         banner.appendChild(block);
       });
 
@@ -338,7 +336,7 @@ async function buildAccountView(account, tab) {
  * MANAGEMENT_OVERRIDE and DEBUG_MODE are both true. Sets up the walk
  * state in chrome.storage and navigates the tab to the same URL the
  * normal reg flow uses (so accountPage.js's existing
- * autoClickFirstSucceededRegistration takes over from there).
+ * processAttendeesTab() takes over from there).
  *
  * The walk's later steps live in registrations.js and attendeeContact.js;
  * each checks STORAGE_KEY.DEBUG_WALK_ACTIVE on page load and appends to
@@ -543,6 +541,7 @@ async function buildAttendeeView(attendee, tab) {
   if (managementOverride) body.appendChild(buildOverrideBanner());
 
   // ── Classify this attendee's conditions ──
+  // (classification below feeds the top-left "Back to ID Check" link)
   const reasons       = attendee.reasons ?? [];
   const redReasons    = reasons.filter(r => r.isRed);
   const yellowReasons = reasons.filter(r => !r.isRed && r.key !== "ageVerification");
@@ -573,6 +572,24 @@ async function buildAttendeeView(attendee, tab) {
   const canIssueBadge = !isBlocked && !hasRed && !hasBlockingYellow;
   console.log("popup.js: canIssueBadge=", canIssueBadge, "isBlocked=", isBlocked, "hasRed=", hasRed, "hasBlockingYellow=", hasBlockingYellow);
 
+  // ── "Back to ID Check" link (top-left) ──
+  // Shown on ANY screen that can appear AFTER the ID check (badge-issued,
+  // missing-ICE, red/override, etc.) for attendees who went through age
+  // verification. Clears AGE_VERIFIED and re-renders to the ID/age-verify step
+  // so a volunteer can redo the ID check if they advanced by mistake. It is
+  // placed before the needsAgeStep block, so it never shows on the ID step
+  // itself (wasAgeChecked is false there).
+  const wasAgeChecked = ageVerified && reasons.some(r => r.key === "ageVerification");
+  if (wasAgeChecked) {
+    const backLink = el("a", { className: "cvg-back-idcheck", href: "#", textContent: "← Back to ID Check" });
+    backLink.addEventListener("click", async (e) => {
+      e.preventDefault();
+      await chrome.storage.local.set({ [STORAGE_KEY.AGE_VERIFIED]: false });
+      await buildAttendeeView(attendee, tab);
+    });
+    body.appendChild(backLink);
+  }
+
 
   // ── AGE VERIFICATION STEP (blocks everything else when required) ──
   // When a minor-age ticket hasn't been age-verified yet, replace the
@@ -583,24 +600,16 @@ async function buildAttendeeView(attendee, tab) {
     nameSpan.className = "legal-name-value";
     nameSpan.textContent = attendee.legalName ?? "—";
 
-    const table = el("table");
-    table.style.cssText = "width:100%; margin-bottom:10px;";
+    const table = el("div", { className: "kv-table" });
 
     const addAgeRow = (label, valueEl) => {
-      const tr  = el("tr");
-      const tdL = el("td", { className: "label" });
-      tdL.style.cssText = "font-size:14px; padding:6px 8px; white-space:nowrap; width:38%;";
-      tdL.textContent = label;
-      const tdR = el("td");
-      tdR.style.cssText = "padding:6px 8px; font-size:15px;";
-      if (typeof valueEl === "string") {
-        tdR.textContent = valueEl;
-      } else {
-        tdR.appendChild(valueEl);
-      }
-      tr.appendChild(tdL);
-      tr.appendChild(tdR);
-      table.appendChild(tr);
+      const row = el("div", { className: "kv-row" });
+      row.appendChild(el("span", { className: "kv-label", textContent: label }));
+      const val = el("span", { className: "kv-val" });
+      if (typeof valueEl === "string") val.textContent = valueEl;
+      else val.appendChild(valueEl);
+      row.appendChild(val);
+      table.appendChild(row);
     };
 
     addAgeRow("Legal Name", nameSpan);
@@ -636,7 +645,7 @@ async function buildAttendeeView(attendee, tab) {
       const block = el("div", { className: "reason-block" });
       const lines = r.text.split("\n");
       block.appendChild(el("div", { className: "reason-title", textContent: lines[0] }));
-      if (lines.length > 1) block.appendChild(el("div", { className: "reason-body", textContent: lines.slice(1).join("\n") }));
+      if (lines.length > 1) block.appendChild(buildReasonBody(lines.slice(1).join("\n")));
       banner.appendChild(block);
     });
     body.appendChild(banner);
@@ -651,7 +660,7 @@ async function buildAttendeeView(attendee, tab) {
       const block = el("div", { className: "reason-block" });
       const lines = r.text.split("\n");
       block.appendChild(el("div", { className: "reason-title", textContent: lines[0] }));
-      if (lines.length > 1) block.appendChild(el("div", { className: "reason-body", textContent: lines.slice(1).join("\n") }));
+      if (lines.length > 1) block.appendChild(buildReasonBody(lines.slice(1).join("\n")));
       banner.appendChild(block);
     });
     body.appendChild(banner);
@@ -691,50 +700,51 @@ async function buildAttendeeView(attendee, tab) {
 
 
   // ── INFO TABLE (preferred name, legal name, age cutoff, active badges) ──
-  const table = el("table");
-  table.style.cssText = "width:100%; margin-bottom:10px;";
+  const table = el("div", { className: "kv-table" });
 
   const addRow = (label, valueEl) => {
-    const tr  = el("tr");
-    const tdL = el("td", { className: "label" });
-    tdL.style.cssText = "font-size:14px; padding:6px 8px; white-space:nowrap; width:38%;";
-    tdL.textContent = label;
-    const tdR = el("td");
-    tdR.style.cssText = "padding:6px 8px; font-size:15px;";
-    if (typeof valueEl === "string") {
-      tdR.textContent = valueEl;
-    } else {
-      tdR.appendChild(valueEl);
-    }
-    tr.appendChild(tdL);
-    tr.appendChild(tdR);
-    table.appendChild(tr);
+    const row = el("div", { className: "kv-row" });
+    row.appendChild(el("span", { className: "kv-label", textContent: label }));
+    const val = el("span", { className: "kv-val" });
+    if (typeof valueEl === "string") val.textContent = valueEl;
+    else val.appendChild(valueEl);
+    row.appendChild(val);
+    table.appendChild(row);
   };
 
-  // Preferred name row — only shown when the attendee actually has a
-  // distinct preferred name. We deliberately do NOT fall back to the legal
-  // first name: showing "Preferred: Angela" next to "Legal Name: Angela
-  // Sample" is just visual noise. Case-insensitive comparison so "angela"
-  // vs "Angela" doesn't trip it.
-  if (!needsAgeStep) {
-    const preferred = (attendee.preferredName ?? "").trim();
-    const legalFirst = (attendee.legalName ?? "").split(" ")[0] ?? "";
-    if (preferred && preferred.toLowerCase() !== legalFirst.toLowerCase()) {
+  const preferred  = (attendee.preferredName ?? "").trim();
+  const legalFirst = (attendee.legalName ?? "").split(" ")[0] ?? "";
+
+  if (canIssueBadge) {
+    // Badge-issued view: a large "Welcome to CONvergence <name>" greeting in
+    // place of the labeled name row. Name (preferred, falling back to the legal
+    // first name) sits on its own line so a long name doesn't crowd the line.
+    // Legal name + ID-required date are dropped here.
+    const welcome = el("div", { className: "cvg-welcome" });
+    welcome.appendChild(el("div", { className: "cvg-welcome-greeting", textContent: "Welcome to CONvergence" }));
+    welcome.appendChild(el("div", { className: "cvg-welcome-name", textContent: preferred || legalFirst || "—" }));
+    body.appendChild(welcome);
+  } else if (!hasBlockingYellow) {
+    // Blocked / override / help-desk views keep the legal name and only show a
+    // distinct preferred name when it differs from the legal first (avoids
+    // "Preferred: Angela" next to "Legal Name: Angela Sample" noise).
+    // The missing-required-field screen (hasBlockingYellow, e.g. missing ICE)
+    // shows NO name/ID rows — just the alert + the field to fix.
+    if (!needsAgeStep && preferred && preferred.toLowerCase() !== legalFirst.toLowerCase()) {
       const prefSpan = el("span");
       prefSpan.className = "legal-name-value";
       prefSpan.textContent = preferred;
       addRow("Preferred", prefSpan);
     }
+    const nameSpan = el("span");
+    nameSpan.className = "legal-name-value";
+    nameSpan.textContent = attendee.legalName ?? "—";
+    addRow("Legal Name", nameSpan);
   }
 
-  // Legal name row (always shown)
-  const nameSpan = el("span");
-  nameSpan.className = "legal-name-value";
-  nameSpan.textContent = attendee.legalName ?? "—";
-  addRow("Legal Name", nameSpan);
-
-  // Age cutoff row (only if an age-verification condition is active)
-  if (reasons.some(r => r.key === "ageVerification")) {
+  // Age cutoff row (only off the badge-issued + missing-field views, when an
+  // age-verification condition is active)
+  if (!canIssueBadge && !hasBlockingYellow && reasons.some(r => r.key === "ageVerification")) {
     const today  = new Date();
     const cutoff = new Date(today.getFullYear() - CONFIG.adultMinimumAge, today.getMonth(), today.getDate());
     const dateSpan = el("span");
@@ -827,21 +837,46 @@ async function buildAttendeeView(attendee, tab) {
     noIssueBtn.textContent = "⛔ DO NOT ISSUE BADGE";
     noIssueBtn.disabled = true;
     body.appendChild(noIssueBtn);
-  } else if (fixableReasons.length === 0 || managementOverride) {
+  } else if ((fixableReasons.length === 0 || managementOverride) && !hasBlockingYellow) {
+    // hasBlockingYellow guard: a missing REQUIRED field (today: emergency
+    // contact / ICE) suppresses BOTH the first-time ribbon and the Badge
+    // Issued button even under Manager Override — the volunteer must fill ICE
+    // and Re-check first. Override bypasses red holds, not required fields.
+    //
     // Pending merch summary -- one bold line per ordered-not-picked-up item.
     // Populated by getAttendeeInfo in js/attendeeContact.js (REG mode only).
     // Same visual style as the merch-mode eventreg list for consistency.
     const pendingMerch    = Array.isArray(attendee.merch) ? attendee.merch : [];
     const hasPendingMerch = pendingMerch.length > 0;
 
+    // First-time-attendee guide (purely visual — no data recorded). The flag
+    // is set on the account Attendees tab by accountPage.js and keyed by
+    // accountId so a stale flag from a previous attendee can't leak through.
+    const ftResult = await chrome.storage.local.get(STORAGE_KEY.FIRST_TIME);
+    const ft = ftResult[STORAGE_KEY.FIRST_TIME];
+    if (ft && ft.isFirstTime && String(ft.accountId) === String(attendee.accountId)) {
+      const ribbon = el("div", { className: "cvg-first-time" });
+      ribbon.appendChild(el("img", { src: chrome.runtime.getURL("assets/FirstTimeRibbon.png"), alt: "" }));
+      ribbon.appendChild(document.createTextNode("First Time? Badge Ribbon!"));
+      body.appendChild(ribbon);
+    }
+
     pendingMerch.forEach(m => {
-      const line = el("div", { textContent: `${m.name} Ordered` });
-      line.style.cssText = "font-size:14px; font-weight:bold; margin:4px 0 4px 6px;";
+      const line = el("div", { className: "cvg-merch-line" });
+      const cfgItem = (CONFIG.merch?.items || []).find(i => i.name === m.name);
+      if (cfgItem && cfgItem.image) {
+        line.appendChild(el("img", { src: chrome.runtime.getURL(cfgItem.image), alt: "" }));
+      }
+      line.appendChild(document.createTextNode(`${m.name} Ordered`));
       body.appendChild(line);
     });
 
     const btn = el("button", { className: "btn-checkin" });
-    btn.textContent = hasPendingMerch ? "Badge Issued - Send to Merchandise" : "Badge Issued";
+    btn.appendChild(document.createTextNode("Badge Issued"));
+    if (hasPendingMerch) {
+      btn.appendChild(el("br"));
+      btn.appendChild(document.createTextNode("Send to Merchandise"));
+    }
     btn.addEventListener("click", () => completeCheckIn(attendee, tab, btn));
     body.appendChild(btn);
   }
@@ -961,6 +996,21 @@ async function getActiveTab() {
 
 function el(tag, props = {}) {
   return Object.assign(document.createElement(tag), props);
+}
+
+// Build a .reason-body whose text is split into per-line divs so bullet lines
+// ("• ...") get a hanging indent: wrapped continuation aligns under the text,
+// not under the bullet. Non-bullet lines sit flush left.
+function buildReasonBody(text) {
+  const wrap = el("div", { className: "reason-body" });
+  String(text).split("\n").forEach(line => {
+    const isBullet = line.startsWith("• ");
+    wrap.appendChild(el("div", {
+      className: isBullet ? "reason-line bullet" : "reason-line",
+      textContent: line,
+    }));
+  });
+  return wrap;
 }
 
 // end js/popup.js

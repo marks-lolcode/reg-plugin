@@ -140,10 +140,11 @@ function scrapeAttendeeMerch() {
 // ── FIELD WRITE (called by popup-merch.js submit) ─────────────────────────
 
 /**
- * Writes the current date/time to each named item's pickup field, arms
- * the post-submit redirect, and clicks Save. Mirrors incrementBadge() in
- * attendeeContact.js so background.js's existing webNavigation redirect
- * handles the dashboard bounce.
+ * Writes the current date/time to each named item's pickup field and clicks
+ * Save. Unlike the reg flow it does NOT arm the post-check-in redirect: merch
+ * skips holds, so after Neon's Save the tab lands back on eventRegDetails (its
+ * natural post-Save destination) where merch-reg-modal.js auto-opens for the
+ * next attendee — no dashboard bounce.
  */
 function writeMerchPickup(itemNames) {
   const saveButton = document.getElementsByName("save")[0];
@@ -177,8 +178,7 @@ function writeMerchPickup(itemNames) {
     return { ok: false, error: "No matching pickup fields found on this form." };
   }
 
-  console.log("merch-attendee.js: arming post-checkin redirect and clicking Save");
-  chrome.runtime.sendMessage({ action: ACTION.ARM_POST_CHECKIN_REDIRECT });
+  console.log("merch-attendee.js: clicking Save (no redirect arm — land on eventRegDetails)");
   saveButton.click();
   return { ok: true, written };
 }

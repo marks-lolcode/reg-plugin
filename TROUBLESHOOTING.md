@@ -5,20 +5,27 @@ something here doesn't help, contact IT before the badge line backs up.
 
 ---
 
-## Yellow banner at the top of the Neon page: "No active CONvergence registration found"
+## Pop-up: "No valid event registration found"
 
-This appears when you click the extension icon on an account page and the
-extension navigates to the Attendees tab, but can't auto-open a
-registration. It is a **safe fallback**, not a check-in blocker.
+This modal appears when you click the extension icon on an account and the
+extension navigates to the Attendees tab, but the account has **no usable
+registration** for this year's event — no records at all, or only ones that
+are cancelled, failed, refunded, or for a different event. It is a **safe
+guard**, not a bug.
 
 What to do:
 
-1. Look at the Attendees table on the Neon page.
-2. If the attendee has a CONvergence registration with status `SUCCEEDED`,
-   click that row manually to open it.
-3. From there the rest of the check-in flow works as normal.
+1. Click **Dismiss**.
+2. Look at the Attendees table on the Neon page yourself.
+3. If you do see a CONvergence registration with status `SUCCEEDED`, click
+   that row manually to open it and continue check-in.
+4. Otherwise, send the attendee to the **Help Desk** to sort out their
+   registration.
 
-The banner also shows up in two other cases:
+## Yellow banner: "Could not find / read the Attendees table"
+
+Separate from the modal above, a yellow banner means a **technical** hiccup
+reading the page (not "no registration"):
 
 - **"Could not find the Attendees table — refresh and try again."** —
   the page took too long to load the registrations table. Reload the Neon
@@ -125,6 +132,29 @@ wrong and the extension can't find the element to write to.
 
 ---
 
+## Merch in-page modal didn't auto-open (account / eventReg / attendee page)
+
+In **Merch** mode + **Automated** pop-up mode the extension draws an in-page
+modal on each page (no toolbar click needed), the same way Reg mode does. If it
+doesn't appear:
+
+1. Confirm the mode on the **Options** page: **Merch** mode AND **Automated**
+   pop-up mode. Manual mode keeps the classic toolbar popup instead.
+2. Reload the **extension** (not just the page) at `chrome://extensions` — the
+   merch modal files (`merch-account-modal.js`, `merch-reg-modal.js`,
+   `merch-attendee-modal.js`) only register after an extension reload.
+3. Open DevTools on the Neon page and check the Console for that page's modal
+   log line, e.g. `merch-reg-modal.js: auto-open check → merchMode=… automated=…`.
+   `merchMode=false` means you're still in Reg mode; `automated=false` means
+   you're in Manual mode.
+
+**Expected post-pickup behavior:** after Confirm Pickup the tab returns to the
+**event registration page** (NOT the dashboard) with the merch list modal
+re-opened, so you can hand the next person their merch. Merch does not re-check
+holds, so it never bounces through the dashboard or account page.
+
+---
+
 ## Verify field detection (labels changed in Neon)
 
 The extension finds every custom field by matching its **label text**. When
@@ -176,17 +206,27 @@ Enable **Manager Override** on the Options page to reveal the **Maintenance** pa
 
 ## The check-in panel auto-opens now (or I want the old click-to-open back)
 
-On the **registration (Attendees)** page the check-in list now appears
-automatically as an in-page panel (top-right) once the page loads — no click
-needed. Close it with the **✕**; click the extension icon to re-open it (it
-re-reads the page first).
+On the **account**, **registration (Attendees)**, and **attendee** pages the
+panel now appears automatically as an in-page panel (top-right) once the page
+loads — no click needed. Close it with the **✕**; click the extension icon to
+re-open it (it re-reads the page first).
 
+- On the **account page** the panel shows account holds / notes, or — for a
+  clean account — the attendee's full name and a **"Proceed to Check-In"**
+  button (this replaces clicking the icon to advance).
 - If it **didn't** open: make sure you're in Registration mode and that the
   page finished loading; click the extension icon to force it. A manager can
   also confirm the mode below.
-- To go back to the **old click-to-open popup**: open the extension Options,
-  enable **Manager Override**, and set **Pop-up behavior → Manual**. (Account
-  pages always behave the old way regardless.)
+- To go back to the **old click-to-open popup**: open the extension Options
+  and set **Pop-up behavior → Manual** (no Manager Override needed).
+
+> **IT note:** if the account/attendee panel never appears even in Automated
+> mode and the page console shows `accountPage.js` logs but **no**
+> `account-modal.js` logs (or, in Merch mode, no `merch-account-modal.js` /
+> `merch-reg-modal.js` / `merch-attendee-modal.js` logs), the extension is
+> running a stale manifest — newly added content-script files only register
+> after you reload the **extension** (`chrome://extensions` → ↻ on the card),
+> not just the Neon page.
 
 ---
 
