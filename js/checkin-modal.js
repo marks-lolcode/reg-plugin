@@ -46,9 +46,13 @@ console.log("checkin-modal.js: script loaded");
 })();
 
 // ── Toolbar re-open ─────────────────────────────────────────────────────────
+// Mode-guarded: the MERCH merch-reg-modal.js also listens on this page, so only
+// act when REG mode is active (the merch modal handles MERCH).
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === ACTION.SHOW_CHECKIN_MODAL) {
-    showCheckinModal();
+    chrome.storage.local.get({ [STORAGE_KEY.EXTENSION_MODE]: EXTENSION_MODE.REG }).then(r => {
+      if ((r[STORAGE_KEY.EXTENSION_MODE] ?? EXTENSION_MODE.REG) === EXTENSION_MODE.REG) showCheckinModal();
+    });
     sendResponse({ ok: true });
     return false;
   }

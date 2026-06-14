@@ -57,8 +57,8 @@ async function saveOptions() {
   // (and clear any in-progress walk state) when override is being disabled.
   const debugMode = mngtOverride && behavior === "debugging";
 
-  // Manual pop-up is a manager-only choice; everyone else is automated.
-  const popupMode = (mngtOverride && popupChoice === "manual") ? "manual" : "automated";
+  // Pop-up behavior is available to everyone (not gated behind override).
+  const popupMode = popupChoice === "manual" ? "manual" : "automated";
 
   await chrome.storage.local.set({
     [STORAGE_KEY.MANAGEMENT_OVERRIDE]: mngtOverride,
@@ -128,7 +128,6 @@ function togglePasswordField() {
   const on = document.getElementById("mngtoverride").checked;
   document.getElementById("password-row").style.display    = on ? "block" : "none";
   document.getElementById("behavior-row").style.display    = on ? "block" : "none";
-  document.getElementById("popup-mode-row").style.display  = on ? "block" : "none";
   document.getElementById("maintenance-row").style.display = on ? "block" : "none";
   if (on) renderStorageDump();
 }

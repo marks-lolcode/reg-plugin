@@ -132,6 +132,29 @@ wrong and the extension can't find the element to write to.
 
 ---
 
+## Merch in-page modal didn't auto-open (account / eventReg / attendee page)
+
+In **Merch** mode + **Automated** pop-up mode the extension draws an in-page
+modal on each page (no toolbar click needed), the same way Reg mode does. If it
+doesn't appear:
+
+1. Confirm the mode on the **Options** page: **Merch** mode AND **Automated**
+   pop-up mode. Manual mode keeps the classic toolbar popup instead.
+2. Reload the **extension** (not just the page) at `chrome://extensions` — the
+   merch modal files (`merch-account-modal.js`, `merch-reg-modal.js`,
+   `merch-attendee-modal.js`) only register after an extension reload.
+3. Open DevTools on the Neon page and check the Console for that page's modal
+   log line, e.g. `merch-reg-modal.js: auto-open check → merchMode=… automated=…`.
+   `merchMode=false` means you're still in Reg mode; `automated=false` means
+   you're in Manual mode.
+
+**Expected post-pickup behavior:** after Confirm Pickup the tab returns to the
+**event registration page** (NOT the dashboard) with the merch list modal
+re-opened, so you can hand the next person their merch. Merch does not re-check
+holds, so it never bounces through the dashboard or account page.
+
+---
+
 ## Verify field detection (labels changed in Neon)
 
 The extension finds every custom field by matching its **label text**. When
@@ -194,14 +217,16 @@ re-open it (it re-reads the page first).
 - If it **didn't** open: make sure you're in Registration mode and that the
   page finished loading; click the extension icon to force it. A manager can
   also confirm the mode below.
-- To go back to the **old click-to-open popup**: open the extension Options,
-  enable **Manager Override**, and set **Pop-up behavior → Manual**.
+- To go back to the **old click-to-open popup**: open the extension Options
+  and set **Pop-up behavior → Manual** (no Manager Override needed).
 
 > **IT note:** if the account/attendee panel never appears even in Automated
 > mode and the page console shows `accountPage.js` logs but **no**
-> `account-modal.js` logs, the extension is running a stale manifest — newly
-> added content-script files only register after you reload the **extension**
-> (`chrome://extensions` → ↻ on the card), not just the Neon page.
+> `account-modal.js` logs (or, in Merch mode, no `merch-account-modal.js` /
+> `merch-reg-modal.js` / `merch-attendee-modal.js` logs), the extension is
+> running a stale manifest — newly added content-script files only register
+> after you reload the **extension** (`chrome://extensions` → ↻ on the card),
+> not just the Neon page.
 
 ---
 

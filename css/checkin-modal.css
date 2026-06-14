@@ -9,7 +9,10 @@
 #cvg-checkin-modal {
   position: fixed;
   top: 12px;
-  right: 12px;
+  /* Default anchor sits ~1/8 of the viewport width (12.5vw) in from the right
+   * edge. A dragged position (explicit left/top set by modal-drag.js) overrides
+   * this. */
+  right: calc(12px + 12.5vw);
   z-index: 2147483647;
   width: 380px;
   max-width: calc(100vw - 24px);

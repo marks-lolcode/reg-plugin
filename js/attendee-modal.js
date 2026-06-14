@@ -50,9 +50,13 @@ function aEl(tag, props = {}) {
 })();
 
 // ── Toolbar re-open ─────────────────────────────────────────────────────────
+// Mode-guarded: the MERCH merch-attendee-modal.js also listens on this page, so
+// only act when REG mode is active (the merch modal handles MERCH).
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === ACTION.SHOW_CHECKIN_MODAL) {
-    showAttendeeModal();
+    chrome.storage.local.get({ [STORAGE_KEY.EXTENSION_MODE]: EXTENSION_MODE.REG }).then(r => {
+      if ((r[STORAGE_KEY.EXTENSION_MODE] ?? EXTENSION_MODE.REG) === EXTENSION_MODE.REG) showAttendeeModal();
+    });
     sendResponse({ ok: true });
     return false;
   }

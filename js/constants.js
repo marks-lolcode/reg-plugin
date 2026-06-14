@@ -112,9 +112,13 @@ STORAGE_KEY.NOTE_ACKNOWLEDGED = "noteAcknowledged";
 STORAGE_KEY.FIRST_TIME        = "firstTime";
 // POPUP_MODE -- "automated" | "manual". Automated (default) auto-opens the
 // in-page check-in modal on the eventReg page and re-opens it on toolbar click;
-// Manual keeps the classic click-to-open popup.html. Only managers can pick
-// manual (set on the options page); everyone else is automated.
+// Manual keeps the classic click-to-open popup.html. Anyone can pick manual
+// (set on the options page); not gated behind Management Override.
 STORAGE_KEY.POPUP_MODE        = "popupMode";
+// MODAL_POS -- { left, top } in px. Last spot the user dragged an in-page modal
+// to. Persisted by modal-drag.js so the modal reappears where they left it,
+// even across page navigations. Absent = use the CSS default corner.
+STORAGE_KEY.MODAL_POS         = "cvgModalPos";
 
 // ── BLOCKING / WARNING CONDITION KEYS ────────────────────────────────────
 // Keys for every blocking/warning condition. Used as keys in the reasons
