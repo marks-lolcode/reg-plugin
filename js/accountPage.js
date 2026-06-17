@@ -564,6 +564,8 @@ async function processAttendeesTab() {
     if (!tableBody) {
       console.warn("accountPage.js: could not find table body");
       if (autoNav) {
+        // No Attendees record/table → try the Registrations tab before giving up.
+        if (!stored.regFallback && await goToRegistrationsFallback(stored)) return;
         showAutoNavFailureBanner("Could not find the Attendees table — refresh and try again.");
         await appendDebugStepIfWalkActive("account", "error", { accountId }, [
           { severity: "error", message: "Could not find #accountEventAttendeesList .el-table__body on the page" },
@@ -580,6 +582,7 @@ async function processAttendeesTab() {
     if (cols.event == null || cols.status == null) {
       console.warn("accountPage.js: could not locate Event/Status columns in header", cols);
       if (autoNav) {
+        if (!stored.regFallback && await goToRegistrationsFallback(stored)) return;
         showAutoNavFailureBanner("Could not read the Attendees table layout. Click the registration manually.");
         await appendDebugStepIfWalkActive("account", "error", { accountId, columnsFound: cols }, [
           { severity: "error", message: "Could not locate Event/Status columns in the Attendees table header" },
@@ -620,8 +623,13 @@ async function processAttendeesTab() {
       return;
     }
 
-    // No valid SUCCEEDED registration — covers "no attendee record at all",
-    // cancelled/failed/refunded-only, and wrong-event accounts.
+    // No valid SUCCEEDED registration in the Attendees table — covers "no
+    // attendee record at all", cancelled/failed/refunded-only, and wrong-event
+    // accounts. Before giving up, fall back to the Registrations tab: some
+    // accounts carry a current/test-event SUCCEEDED registration there with no
+    // Attendees record. processRegistrationsTab() takes the top (most recent) row.
+    if (!stored.regFallback && await goToRegistrationsFallback(stored)) return;
+
     console.log("accountPage.js: no valid SUCCEEDED registration found — showing modal");
     showNoRegistrationModal();
     await appendDebugStepIfWalkActive("account", "error", { accountId, rowCount: analysis.records.length }, [
@@ -633,6 +641,9 @@ async function processAttendeesTab() {
   } catch (err) {
     console.error("accountPage.js: processAttendeesTab failed:", err.message);
     if (autoNav) {
+      // Attendees table never appeared (often: account has no Attendees tab at
+      // all) → try the Registrations tab before surfacing the failure banner.
+      if (!stored.regFallback && await goToRegistrationsFallback(stored)) return;
       showAutoNavFailureBanner("Could not find the Attendees table — refresh and try again.");
       await appendDebugStepIfWalkActive("account", "error", { accountId }, [
         { severity: "error", message: `processAttendeesTab threw: ${err.message}` },
@@ -640,6 +651,112 @@ async function processAttendeesTab() {
       await openDebugReportIfWalkActive();
       chrome.storage.local.remove(STORAGE_KEY.ACCOUNT_AUTO_NAV);
     }
+  }
+}
+
+// ── FALLBACK: Attendees tab → Registrations tab ─────────────────────────────
+
+/**
+ * Re-arms the auto-nav flag with `regFallback: true` and navigates to the
+ * Registrations tab of the same event-registrations page. Called from
+ * processAttendeesTab() when the Attendees tab yields no clickable valid
+ * SUCCEEDED registration (no Attendees record, no table, or unreadable layout).
+ *
+ * `regFallback` prevents an infinite Attendees⇄Registrations bounce: the
+ * Registrations branch (processRegistrationsTab) gives up for real instead of
+ * looping back. Returns true if navigation was kicked off.
+ */
+async function goToRegistrationsFallback(stored) {
+  const accountId = getAccountIdFromUrl();
+  if (!accountId) return false;
+  await chrome.storage.local.set({
+    [STORAGE_KEY.ACCOUNT_AUTO_NAV]: {
+      ...(stored || {}),
+      accountId,
+      regFallback: true,
+      timestamp:   Date.now(),
+    },
+  });
+  console.log("accountPage.js: Attendees tab had no valid registration — falling back to Registrations tab");
+  window.location.href = `/admin/accounts/${accountId}/event-registrations?tab=Registrations`;
+  return true;
+}
+
+/**
+ * Locate the Registrations-tab table body. The event-registrations page does
+ * not reload when switching tabs, so the Attendees list may still be in the
+ * DOM. Prefer the mirror id, else the first visible el-table body that isn't
+ * inside the Attendees list.
+ */
+function findRegistrationsTableBody() {
+  const direct = document.querySelector("#accountEventRegistrationsList .el-table__body");
+  if (direct) return direct;
+  const attendees = document.querySelector("#accountEventAttendeesList");
+  for (const body of document.querySelectorAll(".el-table__body")) {
+    if (attendees && attendees.contains(body)) continue;
+    if (body.offsetParent === null) continue; // hidden tab pane
+    return body;
+  }
+  return null;
+}
+
+/**
+ * Runs on the Registrations tab when we arrived there via goToRegistrationsFallback.
+ * Reuses analyzeAttendeeRecords() (which prefers currentEventNames over
+ * testEventNames and takes the FIRST matching row top-down = the most recent /
+ * top row the user asked for) and clicks that registration's eventRegDetails
+ * link. If nothing matches, shows the no-registration modal — the real give-up.
+ */
+async function processRegistrationsTab(stored) {
+  const accountId = getAccountIdFromUrl();
+  const asArray = v => (Array.isArray(v) ? v : [v]).filter(Boolean);
+  const currentNames = asArray(CONFIG.event.currentEventNames);
+  const testNames    = asArray(CONFIG.event.testEventNames);
+
+  console.log("accountPage.js: Registrations-tab fallback — scanning for SUCCEEDED registration");
+
+  const giveUp = async (issueMsg, extra = {}) => {
+    console.log(`accountPage.js: ${issueMsg} — showing modal`);
+    showNoRegistrationModal();
+    await appendDebugStepIfWalkActive("account", "error", { accountId, source: "registrations-tab", ...extra }, [
+      { severity: "error", message: issueMsg },
+    ]);
+    await openDebugReportIfWalkActive();
+    chrome.storage.local.remove(STORAGE_KEY.ACCOUNT_AUTO_NAV);
+  };
+
+  try {
+    await waitForElement(".el-table__body", POLL_ATTEMPTS, POLL_MS);
+    await new Promise(r => setTimeout(r, 500));
+
+    const tableBody = findRegistrationsTableBody();
+    if (!tableBody) return giveUp("Registrations-tab fallback: could not find the Registrations table body");
+
+    const cols = findColumnIndexes(tableBody);
+    if (cols.event == null || cols.status == null) {
+      return giveUp("Registrations-tab fallback: could not locate Event/Status columns", { columnsFound: cols });
+    }
+
+    const analysis = analyzeAttendeeRecords(tableBody, cols, currentNames, testNames);
+    console.log(`accountPage.js: registrations analysis → records=${analysis.records.length}`);
+
+    if (analysis.firstValidLink) {
+      console.log(`accountPage.js: clicking SUCCEEDED registration (Registrations tab): ${analysis.matchedEventName} (from ${analysis.matchedEventSource})`);
+      await appendDebugStepIfWalkActive("account", "ok", {
+        accountId,
+        source:             "registrations-tab",
+        rowCount:           analysis.records.length,
+        matchedEventName:   analysis.matchedEventName,
+        matchedEventSource: analysis.matchedEventSource,
+      });
+      analysis.firstValidLink.click();
+      chrome.storage.local.remove(STORAGE_KEY.ACCOUNT_AUTO_NAV);
+      return;
+    }
+
+    return giveUp("Registrations-tab fallback: no SUCCEEDED registration matched current/test events", { rowCount: analysis.records.length });
+  } catch (err) {
+    return giveUp(`Registrations-tab fallback threw: ${err.message}`);
   }
 }
 
@@ -680,12 +797,25 @@ async function processAttendeesTab() {
   const path = window.location.pathname;
 
   // Detect if we're on the event-registrations page with Attendees tab.
-  const isEventRegPage  = /^\/admin\/accounts\/\d+\/event-registrations/.test(path);
-  const hasAttendeesTab = window.location.search.includes("tab=Attendees");
+  const isEventRegPage      = /^\/admin\/accounts\/\d+\/event-registrations/.test(path);
+  const hasAttendeesTab     = window.location.search.includes("tab=Attendees");
+  const hasRegistrationsTab = window.location.search.includes("tab=Registrations");
 
   if (isEventRegPage && hasAttendeesTab) {
     console.log("accountPage.js: on Attendees tab — capturing first-time status / auto-nav");
     await processAttendeesTab();
+  } else if (isEventRegPage && hasRegistrationsTab) {
+    // Only act when we arrived here via the Attendees→Registrations fallback
+    // (regFallback flag), so manual visits to the Registrations tab are inert.
+    const stored = await new Promise(resolve => {
+      chrome.storage.local.get(STORAGE_KEY.ACCOUNT_AUTO_NAV, (result) => {
+        resolve(result[STORAGE_KEY.ACCOUNT_AUTO_NAV] ?? null);
+      });
+    });
+    if (stored && stored.regFallback) {
+      console.log("accountPage.js: on Registrations tab via fallback — scanning for SUCCEEDED registration");
+      await processRegistrationsTab(stored);
+    }
   }
 })();
 
