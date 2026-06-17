@@ -231,15 +231,26 @@ lists every registration record with its status. `accountPage.js`
   (`.reason-title` / `.reason-body`), and `.helpdesk-note` are enlarged in both
   `css/popup.css` and `css/checkin-modal.css`; keep the two in sync.
 
-- **No-registration modal** — when the auto-nav flag is set but no valid
-  SUCCEEDED registration is found (no records at all, only
-  cancelled/failed/refunded, or wrong event), `processAttendeesTab()` calls
-  `showNoRegistrationModal()` — a self-styled centered modal (this page loads
-  no shared modal CSS) showing `ERROR_MESSAGES.NO_VALID_REGISTRATION`.
-  Genuinely-technical failures (table/columns not found) still use the yellow
-  `showAutoNavFailureBanner()` because those mean "retry," not "no registration."
-  Per-attendee wrong-event handling on the eventReg page is unchanged
-  (`CONDITION.WRONG_EVENT` red banner inside the check-in modal).
+- **Registrations-tab fallback** — when the auto-nav flag is set but the
+  **Attendees** tab yields no clickable valid SUCCEEDED registration (no
+  Attendees record/table, unreadable layout, or no matching row),
+  `processAttendeesTab()` calls `goToRegistrationsFallback()` instead of giving
+  up: it re-arms `STORAGE_KEY.ACCOUNT_AUTO_NAV` with `regFallback: true` and
+  navigates to `?tab=Registrations`. There `processRegistrationsTab()` reuses
+  `analyzeAttendeeRecords()` (prefers `currentEventNames` over `testEventNames`,
+  takes the **top / most-recent** matching row) and clicks that registration's
+  `eventRegDetails` link. The `regFallback` flag stops an Attendees⇄Registrations
+  loop — the Registrations branch gives up for real. The Registrations table is
+  found via `#accountEventRegistrationsList` (falling back to the first visible
+  non-Attendees `.el-table__body`, since the page does not reload on tab switch).
+- **No-registration modal** — the real give-up. Reached only from the
+  Registrations-tab fallback (or directly if `regFallback` is already set) when
+  no valid SUCCEEDED registration exists on either tab (no records at all, only
+  cancelled/failed/refunded, or wrong event). `showNoRegistrationModal()` is a
+  self-styled centered modal (this page loads no shared modal CSS) showing
+  `ERROR_MESSAGES.NO_VALID_REGISTRATION`. Per-attendee wrong-event handling on
+  the eventReg page is unchanged (`CONDITION.WRONG_EVENT` red banner inside the
+  check-in modal).
 
 ---
 
