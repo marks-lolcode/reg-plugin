@@ -206,6 +206,38 @@ new items are offered, copy an existing entry and adjust the labels.
 
 ---
 
+### 2f. Set the Badge Print-Status Cutoff
+
+The attendee view shows a line under the badge number — **Pre-Printed**,
+**Printed?**, or **Blank** — so staff know whether a physical badge was
+already batch-printed before the con. This is driven by `CONFIG.badgePrint`:
+
+```javascript
+badgePrint: {
+  cutoff: "06/17/2026 15:00",   // ← UPDATE EACH YEAR — real batch-print datetime
+  recheckWindowMinutes: 15,     //   grace window before cutoff counted as "Printed?"
+},
+```
+
+- `cutoff` (`T`) — the date/time the badges were batch-printed, in
+  `MM/DD/YYYY HH:MM` (24-hour, local). Set it to when the print run actually
+  happened.
+- The status compares the registration's **Created** and **Last Updated**
+  timestamps (read from the Neon page) against `T` and a 15-minute window:
+  - **Pre-Printed** — created AND last-updated both before `T − 15 min`.
+  - **Printed?** — created before `T − 15 min`, but last-updated within the
+    window or after (the record was touched near/after the print run).
+  - **Blank** — created at/after `T − 15 min` (registered too late to be
+    pre-printed).
+- `recheckWindowMinutes` rarely needs changing; leave at 15 unless the print
+  workflow changes.
+
+Also confirm the three read-only field labels the feature relies on still
+match Neon (`CONFIG.fieldLabels`): `pronouns` ("Pronouns"), `createdDate`
+("Created"), `lastUpdatedDate` ("Last Updated").
+
+---
+
 ## Step 3 — Verify Field Detection
 
 > **First, run the Config check.** Open the extension **Options** page — the

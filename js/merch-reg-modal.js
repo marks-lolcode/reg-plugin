@@ -115,7 +115,11 @@ function renderMerchRegModal(rows) {
     const row = mrEl("div", { className: "cvg-reg-row green" });
 
     const nameText = att.preferredName ? `${att.legalName} (${att.preferredName})` : att.legalName;
-    row.appendChild(mrEl("div", { className: "cvg-reg-name", textContent: nameText }));
+    const nameDiv = mrEl("div", { className: "cvg-reg-name", textContent: nameText });
+    if (att.pronouns && att.pronouns.trim()) {
+      nameDiv.appendChild(mrEl("span", { className: "cvg-pronouns", textContent: att.pronouns.trim() }));
+    }
+    row.appendChild(nameDiv);
 
     const merchItems  = Array.isArray(att.merch) ? att.merch : [];
     const orderedList = merchItems.filter(m => m.ordered === true);

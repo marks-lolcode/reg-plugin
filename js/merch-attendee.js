@@ -131,6 +131,10 @@ function scrapeAttendeeMerch() {
     attendeeId:    getAttendeeIdFromUrl(),
     legalName:     getLegalName(),
     preferredName: readFieldValueByLabel("Preferred Name") || "",
+    // readViewFieldByLabel is a content-script global from attendeeContact.js
+    // (loaded before this file). Guard in case the load order ever changes.
+    pronouns:      (typeof readViewFieldByLabel === "function"
+                     ? readViewFieldByLabel(CONFIG.fieldLabels.pronouns) : ""),
     items,
   };
   console.log("merch-attendee.js: scrapeAttendeeMerch result:", state);

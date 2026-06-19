@@ -95,6 +95,20 @@ const CONFIG = {
     "Sunday":   0,
   },
 
+  // ── BADGE PRINT-STATUS CUTOFF ────────────────────────────────────────
+  // T = the datetime badges were batch-printed before the con. Used to show
+  // a Pre-Printed / Printed? / Blank line under the badge number so staff
+  // know whether a physical badge already exists for this registration.
+  //   Pre-Printed → registration created AND last-updated before (T - window)
+  //   Printed?    → created before (T - window), but last-updated within the
+  //                 window or after (record touched near/after the print run)
+  //   Blank       → created at/after (T - window): no badge was pre-printed
+  // cutoff format: "MM/DD/YYYY HH:MM" (24-hour, local time).
+  badgePrint: {
+    cutoff: "06/19/2026 03:06",   // ← UPDATE EACH YEAR — real batch-print datetime
+    recheckWindowMinutes: 15,     // ← grace window before cutoff counted as "Printed?"
+  },
+
   // ── NEON ATTENDEE FORM FIELD LABELS ──────────────────────────────────
   // The extension finds custom fields dynamically by matching label text
   // (substring match). If Neon renames a label, update the matching value
@@ -115,6 +129,9 @@ const CONFIG = {
     activeBadgeCount:    "Number of Active Badges",
     pickupDateLabel:     "Pickup Date",
     pickupTimeLabel:     "Pickup Time",
+    pronouns:            "Pronouns",        // read-only viewLabel on account/attendee/reg pages
+    createdDate:         "Created",         // registration "Created:" timestamp (viewLabel)
+    lastUpdatedDate:     "Last Updated",    // registration "Last Updated:" timestamp (viewLabel)
   },
 
   // ── REQUIRED CHECK-IN FIELDS ─────────────────────────────────────────

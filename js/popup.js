@@ -473,9 +473,16 @@ function buildAttendeeListContent(registrationData, tab, body, managementOverrid
 
   registrationData.data.forEach(reg => {
     const row      = el("div", { className: `reg-row reg-row-${reg.state}` });
-    const nameText = reg.preferredName ?
-      `${reg.legalName} (${reg.preferredName})` : reg.legalName;
-    row.appendChild(el("div", { className: "reg-name", textContent: nameText }));
+    // Show "(preferred)" only when it's a genuine nickname not already in the
+    // legal name — suppresses the redundant first-name fallback and a captured
+    // prefix like "Mr." (see formatRegName in checkin-modal.js).
+    const prefName = (reg.preferredName || "").trim();
+    const nameText = (prefName && !reg.legalName.toLowerCase().includes(prefName.toLowerCase()))
+      ? `${reg.legalName} (${prefName})` : reg.legalName;
+    const nameDiv = el("div", { className: "reg-name", textContent: nameText });
+    const regPron = pronounSpan(reg.pronouns);
+    if (regPron) nameDiv.appendChild(regPron);
+    row.appendChild(nameDiv);
 
     if (reg.state === STATE.RED) {
       if (managementOverride) {
@@ -682,6 +689,11 @@ async function buildAttendeeView(attendee, tab) {
     ticketValue.textContent = attendee.ticket ?? "—";
     badgeCell.appendChild(badgeLabel);
     badgeCell.appendChild(badgeValue);
+    if (attendee.badgePrintStatus) {
+      const statusEl = el("div", { className: "badge-print-status", textContent: attendee.badgePrintStatus });
+      statusEl.classList.add(`badge-print-${attendee.badgePrintStatus.replace(/[^\w]/g, "").toLowerCase()}`);
+      badgeCell.appendChild(statusEl);
+    }
     badgeCell.appendChild(ticketValue);
     body.appendChild(badgeCell);
     console.log("popup.js: badge cell rendered (canIssueBadge=true)");
@@ -722,7 +734,10 @@ async function buildAttendeeView(attendee, tab) {
     // Legal name + ID-required date are dropped here.
     const welcome = el("div", { className: "cvg-welcome" });
     welcome.appendChild(el("div", { className: "cvg-welcome-greeting", textContent: "Welcome to CONvergence" }));
-    welcome.appendChild(el("div", { className: "cvg-welcome-name", textContent: preferred || legalFirst || "—" }));
+    const welcomeName = el("div", { className: "cvg-welcome-name", textContent: preferred || legalFirst || "—" });
+    const welcomePron = pronounSpan(attendee.pronouns);
+    if (welcomePron) welcomeName.appendChild(welcomePron);
+    welcome.appendChild(welcomeName);
     body.appendChild(welcome);
   } else if (!hasBlockingYellow) {
     // Blocked / override / help-desk views keep the legal name and only show a
@@ -730,15 +745,22 @@ async function buildAttendeeView(attendee, tab) {
     // "Preferred: Angela" next to "Legal Name: Angela Sample" noise).
     // The missing-required-field screen (hasBlockingYellow, e.g. missing ICE)
     // shows NO name/ID rows — just the alert + the field to fix.
+    let pronounsAttached = false;
     if (!needsAgeStep && preferred && preferred.toLowerCase() !== legalFirst.toLowerCase()) {
       const prefSpan = el("span");
       prefSpan.className = "legal-name-value";
       prefSpan.textContent = preferred;
+      const prefPron = pronounSpan(attendee.pronouns);
+      if (prefPron) { prefSpan.appendChild(prefPron); pronounsAttached = true; }
       addRow("Preferred", prefSpan);
     }
     const nameSpan = el("span");
     nameSpan.className = "legal-name-value";
     nameSpan.textContent = attendee.legalName ?? "—";
+    if (!pronounsAttached) {
+      const namePron = pronounSpan(attendee.pronouns);
+      if (namePron) nameSpan.appendChild(namePron);
+    }
     addRow("Legal Name", nameSpan);
   }
 
@@ -937,7 +959,10 @@ function showConfirmation(attendee) {
   const screen = el("div", { className: "confirm-screen" });
   screen.appendChild(el("div", { className: "confirm-icon",  textContent: "✓" }));
   screen.appendChild(el("div", { className: "confirm-title", textContent: "Check-In Complete" }));
-  screen.appendChild(el("div", { className: "confirm-name",  textContent: attendee.preferredName || attendee.legalName }));
+  const confirmName = el("div", { className: "confirm-name",  textContent: attendee.preferredName || attendee.legalName });
+  const confirmPron = pronounSpan(attendee.pronouns);
+  if (confirmPron) confirmName.appendChild(confirmPron);
+  screen.appendChild(confirmName);
   body.appendChild(screen);
   setTimeout(() => window.close(), 1000);
 }
@@ -996,6 +1021,13 @@ async function getActiveTab() {
 
 function el(tag, props = {}) {
   return Object.assign(document.createElement(tag), props);
+}
+
+// Returns a small inline pronoun span (.cvg-pronouns), or null when empty.
+// Append it to a name element to show pronouns to the right of the name.
+function pronounSpan(pronouns) {
+  const p = (pronouns ?? "").trim();
+  return p ? el("span", { className: "cvg-pronouns", textContent: p }) : null;
 }
 
 // Build a .reason-body whose text is split into per-line divs so bullet lines

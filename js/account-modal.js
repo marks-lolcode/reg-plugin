@@ -241,7 +241,11 @@ async function renderAccountModal(account) {
   body.appendChild(banner);
 
   if (account.accountName) {
-    body.appendChild(acEl("div", { className: "cvg-account-name", textContent: account.accountName }));
+    const nameEl = acEl("div", { className: "cvg-account-name", textContent: account.accountName });
+    if (account.pronouns && account.pronouns.trim()) {
+      nameEl.appendChild(acEl("span", { className: "cvg-pronouns", textContent: account.pronouns.trim() }));
+    }
+    body.appendChild(nameEl);
   }
 
   const proceedBtn = acEl("button", { className: "btn-checkin", textContent: "Proceed to Check-In →" });

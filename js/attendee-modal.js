@@ -198,6 +198,11 @@ async function renderAttendeeModal(attendee) {
     const cell = aEl("div", { className: "badge-number-cell" });
     cell.appendChild(aEl("div", { className: "badge-number-label", textContent: "BADGE NUMBER" }));
     cell.appendChild(aEl("div", { className: "badge-number-value", textContent: attendee.accountId ?? "—" }));
+    if (attendee.badgePrintStatus) {
+      const statusEl = aEl("div", { className: "badge-print-status", textContent: attendee.badgePrintStatus });
+      statusEl.classList.add(`badge-print-${attendee.badgePrintStatus.replace(/[^\w]/g, "").toLowerCase()}`);
+      cell.appendChild(statusEl);
+    }
     cell.appendChild(aEl("div", { className: "badge-ticket-value", textContent: attendee.ticket ?? "—" }));
     body.appendChild(cell);
   } else {
@@ -216,16 +221,28 @@ async function renderAttendeeModal(attendee) {
     // place of the labeled name row (name on its own line for long names).
     const welcome = aEl("div", { className: "cvg-welcome" });
     welcome.appendChild(aEl("div", { className: "cvg-welcome-greeting", textContent: "Welcome to CONvergence" }));
-    welcome.appendChild(aEl("div", { className: "cvg-welcome-name", textContent: preferred || legalFirst || "—" }));
+    const welcomeName = aEl("div", { className: "cvg-welcome-name", textContent: preferred || legalFirst || "—" });
+    const welcomePron = aPronounSpan(attendee.pronouns);
+    if (welcomePron) welcomeName.appendChild(welcomePron);
+    welcome.appendChild(welcomeName);
     body.appendChild(welcome);
   } else if (!hasBlockingYellow) {
     // Missing-required-field screen (hasBlockingYellow, e.g. missing ICE) shows
     // NO name/ID rows — just the alert + the field to fix. Other non-issue
     // views keep the legal name.
+    let pronounsAttached = false;
     if (preferred && preferred.toLowerCase() !== legalFirst.toLowerCase()) {
-      addInfoRow(table, "Preferred", makeNameSpan(preferred));
+      const prefSpan = makeNameSpan(preferred);
+      const prefPron = aPronounSpan(attendee.pronouns);
+      if (prefPron) { prefSpan.appendChild(prefPron); pronounsAttached = true; }
+      addInfoRow(table, "Preferred", prefSpan);
     }
-    addInfoRow(table, "Legal Name", makeNameSpan(attendee.legalName));
+    const legalSpan = makeNameSpan(attendee.legalName);
+    if (!pronounsAttached) {
+      const legalPron = aPronounSpan(attendee.pronouns);
+      if (legalPron) legalSpan.appendChild(legalPron);
+    }
+    addInfoRow(table, "Legal Name", legalSpan);
     if (reasons.some(r => r.key === "ageVerification")) {
       addInfoRow(table, "ID Required", makeCutoffSpan());
     }
@@ -371,7 +388,10 @@ function showModalConfirmation(body, attendee) {
   const screen = aEl("div", { className: "confirm-screen" });
   screen.appendChild(aEl("div", { className: "confirm-icon",  textContent: "✓" }));
   screen.appendChild(aEl("div", { className: "confirm-title", textContent: "Check-In Complete" }));
-  screen.appendChild(aEl("div", { className: "confirm-name",  textContent: attendee.preferredName || attendee.legalName }));
+  const confirmName = aEl("div", { className: "confirm-name",  textContent: attendee.preferredName || attendee.legalName });
+  const confirmPron = aPronounSpan(attendee.pronouns);
+  if (confirmPron) confirmName.appendChild(confirmPron);
+  screen.appendChild(confirmName);
   body.appendChild(screen);
 }
 
@@ -398,6 +418,12 @@ function addInfoRow(container, label, valueEl) {
 
 function makeNameSpan(text) {
   return aEl("span", { className: "legal-name-value", textContent: text ?? "—" });
+}
+
+// Small inline pronoun span (.cvg-pronouns), or null when empty.
+function aPronounSpan(pronouns) {
+  const p = (pronouns ?? "").trim();
+  return p ? aEl("span", { className: "cvg-pronouns", textContent: p }) : null;
 }
 
 function makeCutoffSpan() {
