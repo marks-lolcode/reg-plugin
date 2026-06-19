@@ -211,13 +211,26 @@ td.label {
   letter-spacing: 2px;
 }
 .badge-ticket-value {
-  font-size: 26px;
+  font-size: 34px;
   font-weight: bold;
   color: #333;
   text-transform: uppercase;
   letter-spacing: 1px;
   margin-top: 6px;
+  line-height: 1.1;
+  white-space: normal;
+  word-break: break-word;
 }
+/* Badge print-status line: a bit smaller than the badge number (48px),
+ * larger than the ticket (34px). */
+.badge-print-status {
+  font-size: 40px;
+  font-weight: bold;
+  color: #111;
+  line-height: 1.1;
+  margin: 4px 0 2px;
+}
+.badge-print-status.badge-print-blank { color: var(--brand-red); }
 
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -228,6 +241,14 @@ td.label {
   font-size: 18px;
   font-weight: bold;
   color: #333;
+}
+/* Pronouns: small, light, inline to the right of a name (any name display). */
+.cvg-pronouns {
+  font-size: 0.62em;
+  font-weight: normal;
+  color: #666;
+  margin-left: 6px;
+  white-space: nowrap;
 }
 .age-cutoff-label {
   font-size: 12px;

@@ -25,6 +25,12 @@ const ACCOUNT_PAGE_FEATURE_ENABLED = true;
 const POLL_MS       = 300;
 const POLL_ATTEMPTS = 40;
 
+// Shorter cap for waiting on table ROWS to populate (vs. the table shell
+// existing). The shell appears fast and rows normally follow within a second
+// or two; an account with genuinely no records would otherwise wait the full
+// POLL_ATTEMPTS. 300 ms × 20 ≈ 6 seconds before we accept "no rows" and move on.
+const ROW_POLL_ATTEMPTS = 20;
+
 // ── DEBUG WALK: append a step entry to STORAGE_KEY.DEBUG_REPORT ─────────────
 //
 // Used by all content scripts in the walk chain. Each script calls this
@@ -149,6 +155,37 @@ function waitForElement(selector, attempts, ms) {
   });
 }
 
+/**
+ * Polls for an el-table body that has actually populated its data rows.
+ * The new Neon SPA (Element Plus / Vue 3) inserts the empty `.el-table__body`
+ * shell — and briefly an empty-state/loading placeholder — long before the rows
+ * arrive, so waiting on the element (or the empty-state) alone scrapes an empty
+ * table (records=0) and fires the "no registration" modal prematurely.
+ *
+ * This resolves only when the body returned by `getBody()` has ≥1 data <tr>, or
+ * on timeout (`attempts` × `ms`) — that timeout is the bounded ceiling for an
+ * account that genuinely has no records (it then proceeds to the fallback /
+ * modal). Resolves with the body element (or null) — never rejects, so callers
+ * keep their existing null-checks / fallbacks.
+ *
+ * @param {() => Element|null} getBody — re-queries the body each poll.
+ */
+function waitForTableRows(getBody, attempts, ms) {
+  attempts = attempts ?? POLL_ATTEMPTS;
+  ms       = ms       ?? POLL_MS;
+  return new Promise(resolve => {
+    let n = 0;
+    const t = setInterval(() => {
+      const body = getBody();
+      const rowCount = body ? body.querySelectorAll("tr.el-table__row").length : 0;
+      if (rowCount > 0 || ++n >= attempts) {
+        clearInterval(t);
+        resolve(body || null);
+      }
+    }, ms);
+  });
+}
+
 // ── SCRAPE: Notes badge count ───────────────────────────────────────────────
 
 /**
@@ -253,6 +290,26 @@ function getAccountHolds() {
   return holds;
 }
 
+/**
+ * Reads a value from the account "About" grid by its field title.
+ * Markup: .neon_nest_grid_row > .neon_nest_grid_label .about-field-title (label)
+ *                              + .neon_nest_grid_value .neon_form_value (value)
+ * Case-insensitive prefix match; returns "" if not present.
+ *
+ * @param {string} labelText
+ * @returns {string}
+ */
+function readAboutFieldValue(labelText) {
+  const needle = labelText.toLowerCase();
+  for (const title of document.querySelectorAll(".about-field-title")) {
+    if (!title.textContent.trim().toLowerCase().startsWith(needle)) continue;
+    const row = title.closest(".neon_nest_grid_row");
+    const val = row?.querySelector(".neon_nest_grid_value .neon_form_value");
+    return val?.textContent?.trim() ?? "";
+  }
+  return "";
+}
+
 // ── BUILD: Combined account state for popup rendering ───────────────────────
 
 /**
@@ -268,7 +325,15 @@ async function getAccountData() {
   const accountId = getAccountIdFromUrl();
 
   const nameEl      = document.querySelector(".titan_account_detail_user_name .tool-tip, .titan_account_detail_user_name");
-  const accountName = nameEl ? nameEl.textContent.trim().split("\n")[0].trim() : "";
+  // Neon renders the name and account number with no whitespace between them
+  // ("Mark Sauntry#47859"); insert a space before the # so the displayed name
+  // reads "Mark Sauntry #47859".
+  const accountName = nameEl
+    ? nameEl.textContent.trim().split("\n")[0].trim().replace(/\s*#/, " #")
+    : "";
+
+  // Pronouns from the About grid (blank when not set).
+  const pronouns = readAboutFieldValue(CONFIG.fieldLabels.pronouns);
 
   // Holds first — they outrank notes in determining state color.
   const holds = getAccountHolds();
@@ -311,7 +376,7 @@ async function getAccountData() {
 
   console.log(`accountPage.js: accountId=${accountId} holds=${holds.hasAnyHolds} notes=${notes.length} state=${state}`);
 
-  return { accountId, accountName, notes, holds, state };
+  return { accountId, accountName, pronouns, notes, holds, state };
 }
 
 // ── HIGHLIGHT: Hold rows when override is active ────────────────────────────
@@ -556,11 +621,12 @@ async function processAttendeesTab() {
   console.log(`accountPage.js: Attendees tab. autoNav=${autoNav} valid=[${[...currentNames, ...testNames].join(", ")}]`);
 
   try {
-    await waitForElement("#accountEventAttendeesList .el-table__body", POLL_ATTEMPTS, POLL_MS);
-    // Vue needs a tick to populate rows after the table element exists.
-    await new Promise(r => setTimeout(r, 500));
-
-    const tableBody = document.querySelector("#accountEventAttendeesList .el-table__body");
+    // Wait for the rows to actually populate (the empty .el-table__body shell
+    // appears well before the SPA fills it — see waitForTableRows).
+    const tableBody = await waitForTableRows(
+      () => document.querySelector("#accountEventAttendeesList .el-table__body"),
+      ROW_POLL_ATTEMPTS
+    );
     if (!tableBody) {
       console.warn("accountPage.js: could not find table body");
       if (autoNav) {
@@ -726,10 +792,8 @@ async function processRegistrationsTab(stored) {
   };
 
   try {
-    await waitForElement(".el-table__body", POLL_ATTEMPTS, POLL_MS);
-    await new Promise(r => setTimeout(r, 500));
-
-    const tableBody = findRegistrationsTableBody();
+    // Wait for data rows to populate, not just the empty table shell.
+    const tableBody = await waitForTableRows(findRegistrationsTableBody, ROW_POLL_ATTEMPTS);
     if (!tableBody) return giveUp("Registrations-tab fallback: could not find the Registrations table body");
 
     const cols = findColumnIndexes(tableBody);

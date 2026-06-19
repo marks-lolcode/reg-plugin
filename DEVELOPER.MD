@@ -114,7 +114,7 @@ read by `js/popup-merch.js`):
 
 ```js
 {
-  accountId, attendeeId, legalName, preferredName,
+  accountId, attendeeId, legalName, preferredName, pronouns,
   items: [
     { name, ordered: bool, variant: string|null,
       alreadyPickedUp: bool, pickedUpAt: string|null },
@@ -165,8 +165,23 @@ accountId:             string,   // Neon account ID (from URL param)
 attendeeId:            string,   // Badge prefix + attendee ID (e.g. "A81463")
 name:                  string,   // First + last name from form
 badgeName:             string,   // Badge Name field, falls back to name
+pronouns:              string,   // Pronouns from the read-only "Pronouns" viewLabel
+                                  // field (blank when not set). Rendered in a small
+                                  // .cvg-pronouns span right of the name everywhere.
 badgeImage:            string,   // .tif filename for badge printer
 ticket:                string,   // e.g. "Adult Weekend", "Teen Day Pass"
+createdRaw:            string,   // Raw "Created:" timestamp from the registration
+lastUpdatedRaw:        string,   // detail page ("M/D/YY h:mm AM by <name>"), and raw
+                                  // "Last Updated:". These viewLabel fields exist ONLY on
+                                  // eventRegDetails.do, NOT on attendeeEdit.do, so
+                                  // registrations.js scrapes them (readRegistrationViewField)
+                                  // and carries them in the record. getAttendeeInfo falls
+                                  // back to these when the attendee-page read is empty.
+badgePrintStatus:      string,   // "" | "Pre-Printed" | "Printed?" | "Blank".
+                                  // Derived from the registration Created / Last Updated
+                                  // timestamps (page read, else createdRaw/lastUpdatedRaw)
+                                  // vs CONFIG.badgePrint.cutoff (see computeBadgePrintStatus).
+                                  // Rendered under the badge number in the attendee view only.
 activeBadges:          number,   // Current value of Active Badge Count field
 regStatus:             string,   // e.g. "SUCCEEDED"
 state:                 string,   // "green" | "yellow" | "red"

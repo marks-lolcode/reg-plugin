@@ -102,18 +102,23 @@
 #cvg-checkin-modal .cvg-reg-row.green  { background: var(--brand-blue-bg); }   /* ready/go → blue */
 #cvg-checkin-modal .cvg-reg-row.yellow { background: var(--brand-yellow-bg); }
 #cvg-checkin-modal .cvg-reg-row.red    { background: var(--brand-red-bg); border-color: color-mix(in srgb, var(--brand-red) 30%, white); }
-#cvg-checkin-modal .cvg-reg-name   { font-weight: bold; margin-bottom: 2px; }
+#cvg-checkin-modal .cvg-reg-name   { font-weight: bold; font-size: 16px; margin-bottom: 4px; }
 #cvg-checkin-modal .cvg-reg-ticket { font-size: 12px; color: #555; margin-bottom: 6px; }
-#cvg-checkin-modal .cvg-helpdesk   { color: var(--brand-red-ink); font-weight: bold; font-size: 13px; }
+/* On a blocked (red) row: name in the darker red ink, "Send to Help Desk" in
+ * the brighter stop-red and larger so it reads as the directive. */
+#cvg-checkin-modal .cvg-reg-row.red .cvg-reg-name { color: var(--brand-red-ink); }
+#cvg-checkin-modal .cvg-helpdesk   { color: var(--brand-red); font-weight: bold; font-size: 16px; }
 
 /* Buttons */
+/* Larger, pill-shaped (border-radius:999px) to match the attendee view's
+ * .btn-checkin so the list buttons read as the same primary action. */
 #cvg-checkin-modal button.cvg-btn {
   width: 100%;
-  padding: 8px 10px;
+  padding: 11px 14px;
   border: none;
-  border-radius: 4px;
+  border-radius: 999px;
   color: #fff;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: bold;
   cursor: pointer;
 }
@@ -242,12 +247,33 @@
   letter-spacing: 2px;
 }
 #cvg-checkin-modal .badge-ticket-value {
-  font-size: 26px;
+  font-size: 34px;
   font-weight: bold;
   color: #333;
   text-transform: uppercase;
   letter-spacing: 1px;
   margin-top: 6px;
+  line-height: 1.1;
+  white-space: normal;
+  word-break: break-word;
+}
+/* Badge print-status line: a bit smaller than the badge number (48px),
+ * larger than the ticket (34px). */
+#cvg-checkin-modal .badge-print-status {
+  font-size: 40px;
+  font-weight: bold;
+  color: #111;
+  line-height: 1.1;
+  margin: 4px 0 2px;
+}
+#cvg-checkin-modal .badge-print-status.badge-print-blank { color: var(--brand-red); }
+/* Pronouns: small, light, inline to the right of a name. */
+#cvg-checkin-modal .cvg-pronouns {
+  font-size: 0.62em;
+  font-weight: normal;
+  color: #666;
+  margin-left: 6px;
+  white-space: nowrap;
 }
 #cvg-checkin-modal .cvg-badge-placeholder {
   text-align: center;
@@ -382,13 +408,14 @@
   font-size: 12px;
 }
 #cvg-checkin-modal .btn-recheck:hover { background: var(--brand-blue-dark); }
+/* Pill shape (border-radius:999px) matches .btn-checkin / .cvg-first-time. */
 #cvg-checkin-modal .btn-age-verify {
   width: 100%;
-  padding: 10px;
+  padding: 12px;
   background: var(--brand-red);
   color: #fff;
   border: none;
-  border-radius: 4px;
+  border-radius: 999px;
   font-size: 15px;
   font-weight: bold;
   cursor: pointer;

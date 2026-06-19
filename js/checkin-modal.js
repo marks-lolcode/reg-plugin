@@ -169,6 +169,18 @@ function renderNoteGate(body, reg, notes, managementOverride) {
   body.appendChild(btn);
 }
 
+// Builds the displayed name: "{legalName} ({preferred})", but only appends the
+// parenthetical when preferredName is a genuine nickname — i.e. NOT already
+// contained in legalName. This suppresses the redundant first-name fallback
+// (registrations.js falls back preferredName to legalName.split(" ")[0]) and,
+// critically, a name prefix like "Mr." that the fallback would otherwise grab
+// from "Mr. Nathan Lueth" → "(Mr.)". Mirrored in popup.js buildAttendeeListContent.
+function formatRegName(r) {
+  const pref = (r.preferredName || "").trim();
+  const showPref = pref && !r.legalName.toLowerCase().includes(pref.toLowerCase());
+  return showPref ? `${r.legalName} (${pref})` : r.legalName;
+}
+
 // Attendee list — mirrors buildAttendeeListContent() in js/popup.js.
 function renderAttendeeList(body, reg, managementOverride) {
   const heading = document.createElement("div");
@@ -191,7 +203,13 @@ function renderAttendeeList(body, reg, managementOverride) {
 
     const name = document.createElement("div");
     name.className = "cvg-reg-name";
-    name.textContent = r.preferredName ? `${r.legalName} (${r.preferredName})` : r.legalName;
+    name.textContent = formatRegName(r);
+    if (r.pronouns && r.pronouns.trim()) {
+      const pron = document.createElement("span");
+      pron.className = "cvg-pronouns";
+      pron.textContent = r.pronouns.trim();
+      name.appendChild(pron);
+    }
     row.appendChild(name);
 
     if (r.state === STATE.RED) {

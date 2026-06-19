@@ -125,7 +125,11 @@ function renderMerchAttendeeModal(merchState) {
   const nameText = merchState.preferredName
     ? `${merchState.legalName} (${merchState.preferredName})`
     : merchState.legalName;
-  body.appendChild(mamEl("div", { className: "cvg-heading", textContent: nameText }));
+  const heading = mamEl("div", { className: "cvg-heading", textContent: nameText });
+  if (merchState.pronouns && merchState.pronouns.trim()) {
+    heading.appendChild(mamEl("span", { className: "cvg-pronouns", textContent: merchState.pronouns.trim() }));
+  }
+  body.appendChild(heading);
 
   const orderedItems = (merchState.items ?? []).filter(i => i.ordered);
 
@@ -212,7 +216,11 @@ function showMerchModalConfirmation(body, merchState) {
   const screen = mamEl("div", { className: "confirm-screen" });
   screen.appendChild(mamEl("div", { className: "confirm-icon",  textContent: "✓" }));
   screen.appendChild(mamEl("div", { className: "confirm-title", textContent: "Pickup Recorded" }));
-  screen.appendChild(mamEl("div", { className: "confirm-name",  textContent: merchState.preferredName || merchState.legalName }));
+  const confirmName = mamEl("div", { className: "confirm-name",  textContent: merchState.preferredName || merchState.legalName });
+  if (merchState.pronouns && merchState.pronouns.trim()) {
+    confirmName.appendChild(mamEl("span", { className: "cvg-pronouns", textContent: merchState.pronouns.trim() }));
+  }
+  screen.appendChild(confirmName);
   body.appendChild(screen);
 }
 

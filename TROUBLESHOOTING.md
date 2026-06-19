@@ -178,6 +178,29 @@ from a pasted DevTools dump.
 
 ---
 
+## Pronouns or the print-status line are always blank
+
+Pronouns (shown small to the right of the name) and the **Pre-Printed /
+Printed? / Blank** line under the badge number are read from Neon's read-only
+`viewLabel` fields, matched by label substring.
+
+- **Pronouns blank for everyone** — confirm the attendee actually has pronouns
+  set in Neon, then check `CONFIG.fieldLabels.pronouns` ("Pronouns") still
+  matches the on-page label. The account page reads it from the **About** grid
+  (`.about-field-title`); the attendee/registration pages read it from a
+  `td.viewLabel`. A blank pronoun is expected and correct when none is set.
+- **Print-status line never appears** — it only shows in the single-attendee
+  (badge-number) view, and only when the **Created** date can be read. Confirm
+  `CONFIG.fieldLabels.createdDate` ("Created") and `lastUpdatedDate`
+  ("Last Updated") match the page, and that `CONFIG.badgePrint.cutoff` is a
+  valid `MM/DD/YYYY HH:MM` string (a bad cutoff logs a warning in the page
+  console and suppresses the line).
+- **Wrong status** — re-check the cutoff datetime and the 15-minute window
+  against when badges were actually printed (see Step 2f in
+  `ANNUAL_UPDATE_GUIDE.md`).
+
+---
+
 ## Config looks wrong after editing config.js
 
 Open the extension **Options** page — the **Config check** panel runs automatically

@@ -160,7 +160,11 @@ function renderMerchAccountModal(account) {
 
   const accountName = account?.accountName;
   if (accountName) {
-    body.appendChild(maEl("div", { className: "cvg-account-name", textContent: accountName }));
+    const nameEl = maEl("div", { className: "cvg-account-name", textContent: accountName });
+    if (account.pronouns && account.pronouns.trim()) {
+      nameEl.appendChild(maEl("span", { className: "cvg-pronouns", textContent: account.pronouns.trim() }));
+    }
+    body.appendChild(nameEl);
   }
 
   const proceedBtn = maEl("button", { className: "btn-checkin", textContent: "Proceed to Merch Pickup →" });
