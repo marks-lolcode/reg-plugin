@@ -8,15 +8,16 @@ something here doesn't help, contact IT before the badge line backs up.
 ## Pop-up: "No valid event registration found"
 
 This modal appears when you click the extension icon on an account and the
-extension navigates to the Attendees tab, but the account has **no usable
-registration** for this year's event — no records at all, or only ones that
-are cancelled, failed, refunded, or for a different event. It is a **safe
-guard**, not a bug.
+extension checks the **Attendees** tab and then the **Registrations** tab, but
+the account has **no usable registration** for this year's event — no records at
+all, or only ones that are cancelled, failed, refunded, or for a different
+event. It is a **safe guard**, not a bug. (The extension waits a few seconds for
+each tab's list to load before deciding, so a slow page won't trigger it early.)
 
 What to do:
 
 1. Click **Dismiss**.
-2. Look at the Attendees table on the Neon page yourself.
+2. Look at the Attendees and Registrations tables on the Neon page yourself.
 3. If you do see a CONvergence registration with status `SUCCEEDED`, click
    that row manually to open it and continue check-in.
 4. Otherwise, send the attendee to the **Help Desk** to sort out their
@@ -181,20 +182,26 @@ from a pasted DevTools dump.
 ## Pronouns or the print-status line are always blank
 
 Pronouns (shown small to the right of the name) and the **Pre-Printed /
-Printed? / Blank** line under the badge number are read from Neon's read-only
-`viewLabel` fields, matched by label substring.
+Printed? / Blank** line under the badge number come from Neon's read-only
+`viewLabel` fields, matched by label substring. These fields live on the
+**registration detail** (`eventRegDetails.do`) page, **not** the attendee edit
+page — so they are scraped when you pick the attendee from the registration list
+and **carried forward** to the badge-issued view. (Opening `attendeeEdit.do`
+directly, without going through the registration list first, leaves them blank.)
 
 - **Pronouns blank for everyone** — confirm the attendee actually has pronouns
   set in Neon, then check `CONFIG.fieldLabels.pronouns` ("Pronouns") still
   matches the on-page label. The account page reads it from the **About** grid
-  (`.about-field-title`); the attendee/registration pages read it from a
+  (`.about-field-title`); the registration list page reads it from a
   `td.viewLabel`. A blank pronoun is expected and correct when none is set.
 - **Print-status line never appears** — it only shows in the single-attendee
-  (badge-number) view, and only when the **Created** date can be read. Confirm
-  `CONFIG.fieldLabels.createdDate` ("Created") and `lastUpdatedDate`
-  ("Last Updated") match the page, and that `CONFIG.badgePrint.cutoff` is a
-  valid `MM/DD/YYYY HH:MM` string (a bad cutoff logs a warning in the page
-  console and suppresses the line).
+  (badge-number) view, and only when the **Created** date can be read. Because
+  Created / Last Updated are read on the registration page and carried forward,
+  reaching the attendee via the check-in list (not a direct `attendeeEdit.do`
+  URL) is required. Confirm `CONFIG.fieldLabels.createdDate` ("Created") and
+  `lastUpdatedDate` ("Last Updated") match the page, and that
+  `CONFIG.badgePrint.cutoff` is a valid `MM/DD/YYYY HH:MM` string (a bad cutoff
+  logs a warning in the page console and suppresses the line).
 - **Wrong status** — re-check the cutoff datetime and the 15-minute window
   against when badges were actually printed (see Step 2f in
   `ANNUAL_UPDATE_GUIDE.md`).

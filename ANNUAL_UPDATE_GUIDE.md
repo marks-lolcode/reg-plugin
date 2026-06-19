@@ -223,7 +223,8 @@ badgePrint: {
   `MM/DD/YYYY HH:MM` (24-hour, local). Set it to when the print run actually
   happened.
 - The status compares the registration's **Created** and **Last Updated**
-  timestamps (read from the Neon page) against `T` and a 15-minute window:
+  timestamps (read from the registration detail page and carried forward to the
+  attendee view) against `T` and a 15-minute window:
   - **Pre-Printed** — created AND last-updated both before `T − 15 min`.
   - **Printed?** — created before `T − 15 min`, but last-updated within the
     window or after (the record was touched near/after the print run).
