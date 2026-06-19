@@ -205,6 +205,17 @@ lists every registration record with its status. `accountPage.js`
 `processAttendeesTab()` runs on every load of that tab and does one sweep
 (`analyzeAttendeeRecords()`):
 
+> **Row-population wait** — Neon's account lists are an Element Plus (Vue 3)
+> `el-table` that inserts the empty `.el-table__body` shell (and a transient
+> loading/empty placeholder) *before* the rows arrive. Scraping the shell yields
+> `records=0` and would fire the no-registration modal prematurely, so both
+> `processAttendeesTab()` and `processRegistrationsTab()` gate their scrape on
+> `waitForTableRows(getBody)` — it polls for real `tr.el-table__row` rows and
+> resolves only when ≥1 appears, or after a bounded `ROW_POLL_ATTEMPTS` (~6s) cap
+> so an account with genuinely no records still proceeds to the fallback/modal in
+> finite time. (Distinct from `waitForElement()`, which only waits for an element
+> to exist.)
+
 - **First-time detection** — records whose status contains any
   `REG_STATUS.EXCLUDED_FROM_HISTORY` substring (`"cancel"`, `"fail"`,
   `"refund"`) are ignored. **More than one** remaining record ⇒ attended
